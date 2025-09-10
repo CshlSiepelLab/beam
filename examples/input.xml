@@ -58,7 +58,7 @@
             <parameter id="traitClockRate" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
             <parameter id="piPrimaryTissueFreq" spec="parameter.RealParameter" dimension="1" estimate="true" lower="0.0" upper="1.0" name="stateNode">0.50</parameter>
 
-            <parameter id="birthRate" spec="parameter.RealParameter" dimension="1" lower="0.0" name="stateNode" upper="10000">0.006</parameter>
+            <parameter id="birthRate" spec="parameter.RealParameter" dimension="1" lower="0.0" name="stateNode" upper="1000">0.006</parameter>
             <parameter id="deathRate" spec="parameter.RealParameter" dimension="1" lower="0.0" name="stateNode" upper="1">0.0001</parameter>
 
         </state>
@@ -107,7 +107,7 @@
                 </prior>
                 
                 <prior id="deathRatePrior" name="distribution" x="@deathRate">
-                    <Uniform name="distr"/>
+                    <Uniform name="distr" lower="0.0" upper="1.0"/>
                 </prior>
 
 
