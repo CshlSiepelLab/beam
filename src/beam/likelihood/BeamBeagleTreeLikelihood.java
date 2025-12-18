@@ -364,36 +364,23 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         int rootIndex = partialBufferHelper.getOffsetIndex(root.getNr());
 
         // Setup frequencies
-        setupFrequencies();
+        double[] frequencies = rootFrequenciesInput.get() == null ? substitutionModel.getFrequencies() : rootFrequenciesInput.get().getFreqs();
+        if (frequencies != currentFreqs) { beagle.setStateFrequencies(0, frequencies); }
+        System.arraycopy(frequencies, 0, currentFreqs, 0, frequencies.length);
 
         // Calculate likelihood based on origin
-        return useOrigin && root.getHeight() != origin.getValue() ? 
-                calculateLikelihoodWithOrigin(root, rootIndex) : 
-                calculateStandardLikelihood(rootIndex);
+        return useOrigin && root.getHeight() != origin.getValue() ? calculateLikelihoodWithOrigin(root, rootIndex) : calculateStandardLikelihood(rootIndex);
     }
 
-    private void setupFrequencies() {
-        double[] frequencies = rootFrequenciesInput.get() == null ? 
-                substitutionModel.getFrequencies() : 
-                rootFrequenciesInput.get().getFreqs();
 
-        int cumulateScaleBufferIndex = setupScaling();
-
-        if (frequencies != currentFreqs) {
-            beagle.setStateFrequencies(0, frequencies);
-        }
-        System.arraycopy(frequencies, 0, currentFreqs, 0, frequencies.length);
-    }
-
-    private int setupScaling() {
+    private int getScaleBufferIndex() {
         int cumulateScaleBufferIndex = Beagle.NONE;
         if (useScaleFactors) {
             if (recomputeScaleFactors) {
                 scaleBufferHelper.flipOffset(internalNodeCount);
                 cumulateScaleBufferIndex = scaleBufferHelper.getOffsetIndex(internalNodeCount);
                 beagle.resetScaleFactors(cumulateScaleBufferIndex);
-                beagle.accumulateScaleFactors(scaleBufferIndices, internalNodeCount, 
-                        cumulateScaleBufferIndex);
+                beagle.accumulateScaleFactors(scaleBufferIndices, internalNodeCount, cumulateScaleBufferIndex);
             } else {
                 cumulateScaleBufferIndex = scaleBufferHelper.getOffsetIndex(internalNodeCount);
             }
@@ -409,8 +396,31 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         calculateOriginPartials(rootPartials, rootTransitionMatrix, originPartials);
         // Scale origin partials if needed
         double originScaleFactorsSum = scaleOriginPartials();
+
         // Calculate final likelihood
-        return calculateFinalLikelihood(root, rootIndex, rootPartials, originScaleFactorsSum);
+        // Replace root partials with origin partials
+        int rootNodeNum = root.getNr();
+        beagle.setPartials(partialBufferHelper.getOffsetIndex(rootNodeNum), originPartials);
+
+        // Calculate likelihood
+        double[] sumLogLikelihoods = new double[1];
+        int cumulateScaleBufferIndex = getScaleBufferIndex();
+        beagle.calculateRootLogLikelihoods(new int[]{rootIndex}, new int[]{0}, new int[]{0}, new int[]{cumulateScaleBufferIndex}, 1, sumLogLikelihoods);
+
+        // Restore original root partials
+        beagle.setPartials(partialBufferHelper.getOffsetIndex(rootNodeNum), rootPartials);
+
+        // Calculate final log likelihood
+        double finalLogL = sumLogLikelihoods[0] + originScaleFactorsSum;
+
+        return finalLogL;
+    }
+
+    private double calculateStandardLikelihood(int rootIndex) {
+        double[] sumLogLikelihoods = new double[1];
+        int cumulateScaleBufferIndex = getScaleBufferIndex();
+        beagle.calculateRootLogLikelihoods(new int[]{rootIndex}, new int[]{0}, new int[]{0}, new int[]{cumulateScaleBufferIndex}, 1, sumLogLikelihoods);
+        return sumLogLikelihoods[0];
     }
 
     private double[] getRootPartials(int rootIndex) {
@@ -463,32 +473,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         }
     }
 
-    private double calculateFinalLikelihood(Node root, int rootIndex, double[] rootPartials, 
-            double originScaleFactorsSum) {
-        int rootNodeNum = root.getNr();
-        int cumulateScaleBufferIndex = scaleBufferHelper.getOffsetIndex(internalNodeCount);
-
-        // Replace root partials with origin partials
-        beagle.setPartials(partialBufferHelper.getOffsetIndex(rootNodeNum), originPartials);
-
-        // Calculate likelihood
-        double[] sumLogLikelihoods = new double[1];
-        beagle.calculateRootLogLikelihoods(new int[]{rootIndex}, new int[]{0}, 
-                new int[]{0}, new int[]{cumulateScaleBufferIndex}, 1, sumLogLikelihoods);
-
-        // Restore original root partials
-        beagle.setPartials(partialBufferHelper.getOffsetIndex(rootNodeNum), rootPartials);
-
-        return sumLogLikelihoods[0] + originScaleFactorsSum;
-    }
-
-    private double calculateStandardLikelihood(int rootIndex) {
-        double[] sumLogLikelihoods = new double[1];
-        int cumulateScaleBufferIndex = scaleBufferHelper.getOffsetIndex(internalNodeCount);
-        beagle.calculateRootLogLikelihoods(new int[]{rootIndex}, new int[]{0}, 
-                new int[]{0}, new int[]{cumulateScaleBufferIndex}, 1, sumLogLikelihoods);
-        return sumLogLikelihoods[0];
-    }
 
     private boolean handleUnderflow(double logL, Node root, boolean firstRescaleAttempt) {
         if (Double.isNaN(logL) || Double.isInfinite(logL)) {
@@ -698,10 +682,9 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         eigenBufferHelper.storeState();
         matrixBufferHelper.storeState();
 
-        if (useScaleFactors || useAutoScaling) { // Only store when actually used
+        if (useScaleFactors || useAutoScaling) {
             scaleBufferHelper.storeState();
             System.arraycopy(scaleBufferIndices, 0, storedScaleBufferIndices, 0, scaleBufferIndices.length);
-//            storedRescalingCount = rescalingCount;
         }
 
         if (useOrigin) {
@@ -734,7 +717,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
             int[] tmp2 = storedScaleBufferIndices;
             storedScaleBufferIndices = scaleBufferIndices;
             scaleBufferIndices = tmp2;
-//            rescalingCount = storedRescalingCount;
         }
 
         if (useOrigin) {
@@ -852,9 +834,9 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
     /**
      * Sets the partials from a sequence in an alignment.
      *
-     * @param beagle        beagle
-     * @param nodeIndex     nodeIndex
-     * @param taxon         the taxon
+     * @param beagle beagle
+     * @param nodeIndex nodeIndex
+     * @param taxon the taxon
      */
     protected final void setStates(Beagle beagle,
                                    int nodeIndex, int taxon) {

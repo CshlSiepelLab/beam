@@ -148,10 +148,6 @@ public class BeamBeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihoo
      */
     public int getStateForNode(TreeInterface tree, Node node) {
         if (!areStatesRedrawn) {
-            
-            // DEBUGGING
-            System.out.println("\nTraversing tree to sample tissues");
-
             traverseSample(tree, tree.getRoot(), -1);
             areStatesRedrawn = true;
         }
@@ -214,9 +210,6 @@ public class BeamBeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihoo
                         oPs[i] *= rootFrequencies[i];
                     }
 
-                    // DEBUGGING
-                    System.out.println("Conditional probabilities for origin " + nodeNum + ": " + Arrays.toString(oPs));
-
                     parentState = Randomizer.randomChoicePDF(oPs);
                     probabilities = rootTransitionMatrix;
                 }
@@ -230,9 +223,6 @@ public class BeamBeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihoo
                 for (int i = 0; i < stateCount; i++) {
                     conditionalProbabilities[i] = partialLikelihood[i] * probabilities[parentIndex + i];
                 }
-
-                // DEBUGGING
-                System.out.println("Conditional probabilities for node " + nodeNum + ": " + Arrays.toString(conditionalProbabilities));
 
                 // Sample state
                 reconstructedStates[node.getNr()] = Randomizer.randomChoicePDF(conditionalProbabilities);
