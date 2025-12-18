@@ -1,6 +1,13 @@
+# General ignores
+.DS_Store
+
+# Ignore results files
 *.log
 *.trees
 *.state
-.DS_Store
+
+# Ignore files made during build process
 build
 dist
+build*
+beast*

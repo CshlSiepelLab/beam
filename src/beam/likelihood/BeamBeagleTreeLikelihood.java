@@ -572,8 +572,7 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
             logTransitionMatrixDebug(root, br);
         }
 
-        substitutionModel.getTransitionProbabilities(root, origin.getValue(), 
-                root.getHeight(), br, probabilities);
+        substitutionModel.getTransitionProbabilities(root, origin.getValue(), root.getHeight(), br, probabilities);
         System.arraycopy(probabilities, 0, rootTransitionMatrix, 0, matrixDimensions);
 
         if (transitionMatrixDebug) {
