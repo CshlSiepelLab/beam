@@ -121,8 +121,6 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
             }
         }
 
-        System.out.println("Edit rates: " + Arrays.toString(editRates));
-
         if (Math.abs(editRateSum - 1.0) > 1e-5) {
             throw new RuntimeException("Sum of edit rates must be 1.0, but it is " + editRateSum + "!");
         }
