@@ -1,4 +1,4 @@
-<package name="beam" version="0.1.1">
+<package name="beam" version="0.2.0">
   <depends on="BEAST.base" atleast="2.7.7"/>
   <depends on="BEAST.app" atleast="2.7.7"/>
   <depends on="BEAST_CLASSIC" atleast="1.6.0"/>
@@ -26,6 +26,7 @@
 
     <!-- Datatype providers -->
     <provider classname="beam.datatype.EditData"/>
+    <provider classname="beam.datatype.TissueData"/>
 
   </service>
 </package> 

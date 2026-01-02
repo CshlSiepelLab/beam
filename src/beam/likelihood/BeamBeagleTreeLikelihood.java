@@ -846,14 +846,7 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         int[] states = new int[patternCount];
 
         for (i = 0; i < patternCount; i++) {
-            int code = data.getPattern(taxon, i);
-            int[] statesForCode = data.getDataType().getStatesForCode(code);
-            if (statesForCode.length != 1) {
-                System.err.println("Error: Invalid state code for taxon " + taxon + " at pattern " + i + ".");
-                System.exit(1);
-            }
-            
-            states[i] = statesForCode[0];
+            states[i] = data.getDataType().getStatesForCode(data.getPattern(taxon, i))[0];
         }
 
         beagle.setTipStates(nodeIndex, states);

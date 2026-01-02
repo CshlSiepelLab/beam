@@ -7,12 +7,14 @@ import java.util.stream.Stream;
 
 import beast.base.core.Description;
 import beast.base.core.Input;
+import beast.base.core.Input.Validate;
 import beast.base.evolution.datatype.DataType;
 import beast.base.evolution.datatype.IntegerData;
 import beast.base.evolution.substitutionmodel.EigenDecomposition;
 import beast.base.evolution.substitutionmodel.SubstitutionModel;
 import beast.base.evolution.tree.Node;
 import beast.base.inference.parameter.RealParameter;
+import beast.base.evolution.alignment.Alignment;
 
 /**
  * TideTree substitution model that can be used with the modified BEAGLE tree likelihood
@@ -24,56 +26,108 @@ import beast.base.inference.parameter.RealParameter;
             "under the assumption that editing happens during the entire experiment.")
 public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
 
-    /** Input for edit rates during the editing window */
-    public final Input<List<RealParameter>> editRatesInput = new Input<>("editRates",
-            "Rates at which edits are introduced into the genomic barcode during the editing window",
-            new ArrayList<>(), Input.Validate.REQUIRED);
+    // Input for the silencing rate throughout the experiment
+    public final Input<RealParameter> silencingRateInput = new Input<>("silencingRate", "Rate at which barcodes are silenced throughout the entire experiment", Validate.REQUIRED);
+    // Input for edit rates during the editing window
+    public final Input<List<RealParameter>> editRatesInput = new Input<>("editRates", "Input rates at which edits are introduced into the genomic barcode during the editing window", new ArrayList<>(), Validate.OPTIONAL);
+    // Input for edit rates during the editing window
+    final public Input<Alignment> dataInput = new Input<>("data", "EditData from which to calculate edit rates if they are not provided", Validate.OPTIONAL);
 
-    /** Input for the silencing rate throughout the experiment */
-    public final Input<RealParameter> silencingRateInput = new Input<>("silencingRate",
-            "Rate at which barcodes are silenced throughout the entire experiment",
-            Input.Validate.REQUIRED);
-
-    /** Frequencies of states */
+    // Frequencies of states
     private double[] frequencies;
-
-    /** Edit rate parameter */
+    // Edit rate parameter
     private RealParameter editRate_;
-
-    /** Silencing rate parameter */
+    // Silencing rate parameter
     private RealParameter silencingRate_;
-
-    /** Array of edit rates */
+    // Array of edit rates
     private Double[] editRates;
-
-    /** State representing missing data */
+    // State representing missing data
     private int missingDataState;
-
-    /** Stored silencing rate for dirty state checking */
+    // Stored silencing rate for dirty state checking
     private double storedSilencingRate;
 
     @Override
     public void initAndValidate() {
-        // One state for each edit type + unedited + lost
-        nrOfStates = editRatesInput.get().get(0).getDimension() + 2;
-
-        editRate_ = editRatesInput.get().get(0);
-        editRates = new Double[editRate_.getDimension()];
-        for (int i = 0; i < editRate_.getDimension(); i++) {
-            editRates[i] = editRate_.getValue(i);
+        // Make sure that data is provided if edit rates are not
+        if (editRatesInput.get().isEmpty() && dataInput.get() == null) {
+            throw new RuntimeException("Either edit rates or data to calculate edit rates must be provided!");
         }
 
-        // Add edit rates to rate matrix
+        // Edit rates can be provided
         Double editRateSum = 0.0;
-        for (double editRate : editRates) {
-            if (editRate < 0) {
-                throw new RuntimeException("All edit rates must be positive!");
+        if (!editRatesInput.get().isEmpty()) {
+            System.out.println("Using provided edit rates.");
+            editRate_ = editRatesInput.get().get(0);
+            editRates = new Double[editRate_.getDimension()];
+            for (int i = 0; i < editRate_.getDimension(); i++) {
+                editRates[i] = editRate_.getValue(i);
             }
-            editRateSum += editRate;
+
+            // Add edit rates to rate matrix
+            for (double editRate : editRates) {
+                if (editRate < 0) {
+                    throw new RuntimeException("All edit rates must be positive!");
+                }
+                editRateSum += editRate;
+            }
         }
+        // Or data can be provided from which we will compute the edit rates
+        else {
+            System.out.println("Calculating empirical edit rates from data.");
+            Alignment data = dataInput.get();
+            DataType dataType = data.getDataType();
+            int taxonCount = data.getTaxonCount();
+
+            // Determine maximum state in the data, which is the missing data state
+            int maxState = 0;
+            for (int taxon = 0; taxon < taxonCount; taxon++) {
+                List<Integer> seq = data.getCounts().get(taxon);
+                for (int value : seq) {
+                    maxState = Math.max(maxState, value);
+                }
+            }
+
+            // Count occurrences of each state
+            double[] stateCounts = new double[maxState - 1]; // Exclude missing data (last state)
+            double total = 0.0;
+
+            int maxValSeen = 0; // Make sure data is input in sequential order
+            for (int taxon = 0; taxon < taxonCount; taxon++) {
+                List<Integer> seq = data.getCounts().get(taxon);
+                for (int value : seq) {
+                    if (value == 0 || value == maxState) {
+                        continue; // Skip unedited and missing data
+                    }
+                    stateCounts[value - 1] += 1;    // Use -1 index to skip unedited (0)
+                    total += 1;
+
+                    if (value > maxValSeen) {
+                        if (value == maxValSeen + 1) {
+                            maxValSeen = value;
+                        }
+                        else {
+                            throw new RuntimeException("States in data must be sequentially ordered starting from 0!");
+                        }
+                    }
+                }
+            }
+
+            // Convert counts → proportions for edit rates
+            editRates = new Double[stateCounts.length];
+            for (int i = 0; i < stateCounts.length; i++) {
+                double editRate = stateCounts[i] / total;
+                editRates[i] = editRate;
+                editRateSum += editRate;
+            }
+        }
+
+        System.out.println("Edit rates: " + Arrays.toString(editRates));
+
         if (Math.abs(editRateSum - 1.0) > 1e-5) {
             throw new RuntimeException("Sum of edit rates must be 1.0, but it is " + editRateSum + "!");
         }
+
+        nrOfStates = editRates.length + 2;
 
         silencingRate_ = silencingRateInput.get();
         double silencingRate = silencingRate_.getValue();

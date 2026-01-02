@@ -36,28 +36,24 @@
     
 <!-- input data -->
 <data id="alignment" spec="feast.fileio.AlignmentFromFasta" fileName="examples/barcodes.fasta">
-    <userDataType spec="beam.datatype.EditData" nrOfStates="57"/>
+    <userDataType spec="beam.datatype.EditData"/>
 </data>
 
 <data id="tissue" spec="beastclassic.evolution.alignment.AlignmentFromTrait">
     <traitSet id="traitset" spec="feast.fileio.TraitSetFromXSV" fileName="examples/tissues.csv" taxa="@taxonset" taxonNameCol="0" skipFirstRow="false" sep="," traitname="discrete"/>
-    <userDataType id="codeMap" spec="beast.base.evolution.datatype.UserDataType" codeMap="LL=0,M=1,RL=2,? = 0 1 2 " codelength="-1" states="3"/>
+    <userDataType id="tissueDatatype" spec="beam.datatype.TissueData" primaryTissue="LL" otherTissues="M,RL"/>
 </data>
 
-<run id="mcmc" spec="MCMC" chainLength="50000000">
+<run id="mcmc" spec="MCMC" chainLength="5000000">
         <state id="state" spec="State" storeEvery="5000">
             <stateNode id="tree" spec="beam.tree.BeamStartingTreeFromNewick" taxa="@alignment" IsLabelledNewick="true" adjustTipHeights="true" newick="((((((M2.GTAGGCCCATTGCGGC-1:9.510559946850536,(RW.TTTATGCAGTCTTGCA-1:8.072604549720493,M2.CCCAATCGTTGCGTTA-1:8.072604549720493):1.4379553971300438):18.336689283152594,(RW.TGAGCCGGTTGTACAC-1:23.625341399188425,M2.TCGGTAAAGAAGGTGA-1:23.625341399188425):4.221907830814704):18.73537531391876,LL.GCGCAACAGGTAGCTG-1:46.582624543921895):1.616906704471214,((LL.TCAGATGGTTAAAGAC-1:38.54050829097753,LL.GGGTCTGAGCCCAGCT-1:38.54050829097753):9.263806172975377,RE.GAATGAAAGATGTCGG-1:47.804314463952906):0.39521673850226624):3.4712792274120967,(((((LL.GGTGAAGGTCTTCAAG-1:24.076415708572988,LL.GTGTTAGGTGATGATA-1:24.076415708572988):0.39521685754624225,LL.ACTGAACAGAGGACGG-1:24.471632566119233):12.985352531669678,((LL.CGTGAGCAGATAGCAT-1:8.613081992303519,LL.AAGTCTGTCCTAGTGA-1:8.613081992303519):28.448686166559202,(LL.GTACGTACATTGCGGC-1:0.3952166186746508,LL.ATTATCCAGTACGATA-1:0.3952166186746508):36.666551540188074):0.39521683789174394):13.423391800405849,RE.AGGGTGAAGATAGGAG-1:50.880377012266):0.3952167766618277,((M1.TTAACTCGTAGCGTCC-1:42.93637252804264,(LL.GTGCAGCGTTTGTTTC-1:0.3952166273332763,LL.GAACATCCACGTTGGC-1:0.3952166273332763):42.541155900709356):2.172139108941477,RE.CTCGGGACATTTGCTT-1:45.10851163698411):6.167082019845732):0.39521673278285896):1.9339728194574037,(((LL.CAGATCACACAGTCGC-1:35.941898253411075,LL.ACACCGGCACCAGATT-1:35.941898253411075):8.621148802159707,LL.GTCGGGTCAGGATCGA-1:44.563047055570784):2.116839662780363,(((LL.GCGCAACTCAACACCA-1:6.564442025629916,LL.ATTTCTGGTGAAATCA-1:6.564442025629916):39.325009398131165,LL.AACACGTTCTGCTGTC-1:45.88945142376108):0.3952181375659104,LL.ACCGTAATCCTCTAGC-1:46.284669561326986):0.39521692778528655):6.924896512765744):0.39521665883190477">
                 <taxonset id="taxonset" spec="TaxonSet" alignment="@alignment"/>
             </stateNode>
-
-            <parameter id="editRate" spec="parameter.RealParameter" estimate="false" name="stateNode" lower="0.0" dimension="55">0.05102040816326531 0.07142857142857142 0.09183673469387756 0.05102040816326531 0.01020408163265306 0.01020408163265306 0.02040816326530612 0.05102040816326531 0.01020408163265306 0.02040816326530612 0.02040816326530612 0.01020408163265306 0.05102040816326531 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.04081632653061224 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.02040816326530612 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.030612244897959183 0.030612244897959183 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.02040816326530612 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.02040816326530612 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 0.01020408163265306 </parameter>
             <parameter id="silencingRate" spec="parameter.RealParameter" dimension="1" lower="0.0" name="stateNode" upper="1000">0.001</parameter>
             <parameter id="clockRate.c" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
-
             <parameter id="relativeGeoRates.s:tissue" spec="parameter.RealParameter" lower="0.0" dimension="3" name="stateNode">1.0</parameter>
             <parameter id="traitClockRate" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
             <parameter id="piPrimaryTissueFreq" spec="parameter.RealParameter" dimension="1" estimate="true" lower="0.0" upper="1.0" name="stateNode">0.50</parameter>
-
             <parameter id="birthRate" spec="parameter.RealParameter" dimension="1" lower="0.0" name="stateNode" upper="1.0">0.006</parameter>
             <parameter id="deathRate" spec="parameter.RealParameter" dimension="1" lower="0.0" name="stateNode" upper="1.0">0.0001</parameter>
 
@@ -117,7 +113,7 @@
                 
                 <distribution id="treeLikelihood" spec="beam.likelihood.BeamIrreversibleTreeLikelihood" origin="54.0001" data="@alignment" tree="@tree">
                     <siteModel spec="SiteModel" id="siteModel" mutationRate="1.0" gammaCategoryCount="1">
-                        <substModel id="substModel" spec="beam.substitutionmodel.BeamMutationSubstitutionModel" editRates="@editRate" silencingRate="@silencingRate">
+                        <substModel id="substModel" spec="beam.substitutionmodel.BeamMutationSubstitutionModel" silencingRate="@silencingRate" data="@alignment">
                             <frequencies spec="beast.base.evolution.substitutionmodel.Frequencies" frequencies="1.0 0 0" estimate="false"/>
                         </substModel>
                     </siteModel>
@@ -176,7 +172,7 @@
             <log idref="clockRate.c"/>
             <log idref="relativeGeoRates.s:tissue"/>
             <log idref="traitClockRate"/>
-            <log id="tissueSubstModelLogger" spec="beam.substitutionmodel.BeamTissueSubstitutionModelLogger" dataType="@codeMap" model="@substModelMigration"/>
+            <log id="tissueSubstModelLogger" spec="beam.substitutionmodel.BeamTissueSubstitutionModelLogger" dataType="@tissueDatatype" model="@substModelMigration"/>
             <log idref="treeLikelihood"/>
             <log idref="traitLikelihood"/>
             <log idref="birthRate"/>
@@ -197,7 +193,7 @@
                 </log>
         </logger>
 
-    <operatorschedule id="OperatorSchedule" spec="OperatorSchedule"/>
+    <operatorschedule id="OperatorSchedule" spec="kernel.BactrianOperatorSchedule"/>
 </run>
 
 </beast>
