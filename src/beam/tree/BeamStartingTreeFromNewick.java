@@ -2,52 +2,61 @@ package beam.tree;
 
 import beast.base.core.Description;
 import beast.base.core.Input;
-import beast.base.inference.StateNode;
-import beast.base.inference.StateNodeInitialiser;
-import beast.base.evolution.alignment.Alignment;
-import beast.base.evolution.tree.Node;
-import beast.base.evolution.tree.Tree;
-import beast.base.inference.parameter.RealParameter;
-import beast.base.util.Randomizer;
 import beast.base.evolution.tree.TreeParser;
-
-import java.util.List;
-import java.util.stream.IntStream;
+import beast.base.evolution.tree.Node;
+import beast.base.inference.parameter.RealParameter;
 
 /**
  * @author Stephen Staklinski
  */
 @Description("This class uses the normal TreeParser abilities of reading in a starting tree" +
-            " while also taking in the required inputs for the TideTree model.")
+            " while also taking into account the origin tree height.")
 public class BeamStartingTreeFromNewick extends TreeParser {
-    
-    final public Input<RealParameter> rootHeightInput = new Input<>("rootHeight", "Time from beginning of the experiment until sequencing", Input.Validate.OPTIONAL);
-    final public Input<RealParameter> editDurationInput = new Input<>("editDuration", "Time duration from edit start to edit stop", Input.Validate.OPTIONAL);
-    final public Input<RealParameter> editHeightInput = new Input<>("editHeight", "Time from the onset of edit until sequencing", Input.Validate.OPTIONAL);
 
-    // set up useful parameters
-    double editHeight;
-    double editDuration;
-    double rootHeight;
+    /** Input for the origin time of the cell division process */
+    public Input<RealParameter> originInput = new Input<>("origin",
+            "Start of the cell division process, usually start of the experiment." +
+            " If this is provided, the input tree will be rescaled so that the root height is close to this origin time." +
+            " This is important for when a tree is input without branch lengths, so that here it starts with a tree" +
+            " with a more reasonable height than the default of 0.01 total height. (Default: No input value, in which case" +
+            " the tree is not rescaled.)", Input.Validate.OPTIONAL);
 
     @Override
     public void initAndValidate() {
-
-        if (rootHeightInput.get() != null) {
-            rootHeight = rootHeightInput.get().getValue();
-        }
-        if (editDurationInput.get() != null) {
-            editDuration = editDurationInput.get().getValue();
-        }
-        if (editHeightInput.get() != null) {
-            editHeight = editHeightInput.get().getValue();
-        }
-
-        if (editHeightInput.get() != null && rootHeightInput.get() != null){
-            if (editHeight > rootHeight){
-                throw new RuntimeException("editHeight has to be smaller or equal than rootHeight");
-            }
-        }
         super.initAndValidate();
+
+        if (originInput.get() != null) {
+            /* 
+            * Rescale the tree so that the root height matches close to the origin time 
+            * This is important for when a tree is input without branch lengths, so that here
+            * it starts the MCMC with a tree with a more reasonable height than the default of
+            * 0.01 total height. We offset the provided origin slightly to prevent errors
+            * in which the tree height is exactly the same as the origin time.
+            */
+            System.out.println("Rescaling the input starting tree since the origin time was provided with the tree input.");
+            System.out.println("Original input starting tree: ");
+            System.out.println(getRoot().toNewick());
+
+            double desired = originInput.get().getValue() - 1e-6;
+            Node root = getRoot();
+            double current = root.getHeight();
+            double factor = desired / current;
+            
+            System.out.println("Current root height: " + current);
+            System.out.println("Target root height: " + desired);
+            System.out.println("Scaling factor: " + factor);
+
+            scaleHeights(root, factor);
+
+            System.out.println("Rescaled starting tree: ");
+            System.out.println(getRoot().toNewick());
+        }
+    }
+
+    private void scaleHeights(Node node, double factor) {
+        node.setHeight(node.getHeight() * factor);
+        for (int i = 0; i < node.getChildCount(); i++) {
+            scaleHeights(node.getChild(i), factor);
+        }
     }
 }

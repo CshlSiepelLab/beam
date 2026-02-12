@@ -34,6 +34,10 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
     public final Input<List<RealParameter>> editRatesInput = new Input<>("editRates", "Input rates at which edits are introduced into the genomic barcode during the editing window", new ArrayList<>(), Validate.OPTIONAL);
     // Input for edit rates during the editing window
     final public Input<Alignment> dataInput = new Input<>("data", "EditData from which to calculate edit rates if they are not provided", Validate.REQUIRED);
+    // Mode for calculating edit rates when they are not provided
+    public final Input<String> editRateCalculationModeInput = new Input<>("editRateCalculationMode", "Method for calculating edit rates from the data if they are not provided. " +
+            "Options are 'empirical' to calculate edit rates proportional to the empirical frequency of each edit in the data, or 'uniform' to give equal rates to all edits. " +
+            "Default is 'empirical'.", "empirical", Validate.OPTIONAL);
 
     // Store a copy of data, since missing state will be replaced
     private Alignment data;
@@ -78,7 +82,6 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
         }
 
         if (!isSequential) {
-            System.out.println("Input mutations are not in sequential order. Replacing with sequential values to match edit rates.");
             // Overwrite the data to have sequential states, mapping in the order in which they are input across columns from the first taxon row down to other taxa
             Map<Integer, Integer> map = new HashMap<>();  // input mut -> sequential mut
             int nextSequentialMut = 1; // Start sequential mutations at 1 since 0 is unedited
@@ -96,13 +99,6 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
                 }
             }
         }
-
-        for (int taxon = 0; taxon < taxonCount; taxon++) {
-            List<Integer> seq = data.getCounts().get(taxon);
-            System.out.println("Taxon " + taxon + ": " + seq);
-        }
-
-
 
         // Edit rates can be provided
         Double editRateSum = 0.0;
@@ -124,8 +120,6 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
         }
         // Or data can be provided from which we will compute the edit rates
         else {
-            System.out.println("Calculating empirical edit rates from data.");
-
             // Determine number of states in the data
             int maxState = 0;
             for (int taxon = 0; taxon < taxonCount; taxon++) {
@@ -135,17 +129,31 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
                 }
             }
 
-            // Count occurrences of each state
             double[] stateCounts = new double[maxState];    // initializes edit rates, not including unedited (0) or missing (-1) states
             double total = 0.0;
 
-            for (int taxon = 0; taxon < taxonCount; taxon++) {
-                List<Integer> seq = data.getCounts().get(taxon);
-                for (int value : seq) {
-                    if (value <= 0) continue;   // skip unedited (0) and missing (-1) states
-                    stateCounts[value - 1] += 1;    // Use -1 index since java is 0-indexed and we are not including unedited (0) here in the editRates array
-                    total += 1;
+            if (editRateCalculationModeInput.get() == "empirical") {
+                System.out.println("Calculating empirical frequency edit rates from data.");
+                // Count occurrences of each state
+                for (int taxon = 0; taxon < taxonCount; taxon++) {
+                    List<Integer> seq = data.getCounts().get(taxon);
+                    for (int value : seq) {
+                        if (value <= 0) continue;   // skip unedited (0) and missing (-1) states
+                        stateCounts[value - 1] += 1;    // Use -1 index since java is 0-indexed and we are not including unedited (0) here in the editRates array
+                        total += 1;
+                    }
                 }
+
+                
+            }
+            else if (editRateCalculationModeInput.get() == "uniform") {
+                System.out.println("Using uniform edit rates.");
+                // Give equal counts to each edit
+                Arrays.fill(stateCounts, 1.0);
+                total = stateCounts.length;
+            }
+            else {
+                throw new RuntimeException("Invalid edit rate calculation mode: " + editRateCalculationModeInput.get() + ". Must be 'empirical' or 'uniform'.");
             }
 
             // Normalize mutation counts to proportions for proper edit rates that sum to 1
