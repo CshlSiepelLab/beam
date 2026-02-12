@@ -74,6 +74,13 @@ public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
         substitutionModel = (BeamMutationSubstitutionModel) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
         data = substitutionModel.getData(); // We use the data from the substitution model since the missing data state (-1) is replaced there during the rate matrix setup
 
+        // DEBUGGING
+        int taxonCount = data.getTaxonCount();
+        for (int taxon = 0; taxon < taxonCount; taxon++) {
+            List<Integer> seq = data.getCounts().get(taxon);
+            System.out.println("Taxon " + taxon + ": " + seq);
+        }
+
         if (data.getTaxonCount() != treeInput.get().getLeafNodeCount()) {
             throw new IllegalArgumentException("Number of taxa in alignment does not match number of leaves in tree");
         }

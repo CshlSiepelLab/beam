@@ -54,6 +54,12 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
         data = dataInput.get();
         int taxonCount = data.getTaxonCount();
 
+        // DEBUGGING
+        for (int taxon = 0; taxon < taxonCount; taxon++) {
+            List<Integer> seq = data.getCounts().get(taxon);
+            System.out.println("Taxon " + taxon + ": " + seq);
+        }
+
         // Edit rates can be provided
         Double editRateSum = 0.0;
         if (!editRatesInput.get().isEmpty()) {
@@ -144,6 +150,12 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
                     seq.set(i, missingDataState); // Replace missing data state (-1) with missingDataState
                 }
             }
+        }
+
+        // DEBUGGING
+        for (int taxon = 0; taxon < taxonCount; taxon++) {
+            List<Integer> seq = data.getCounts().get(taxon);
+            System.out.println("Taxon " + taxon + ": " + seq);
         }
 
         // Center root frequency on the unedited first state, regardless of input frequencies

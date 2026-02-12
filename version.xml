@@ -28,5 +28,8 @@
     <provider classname="beam.datatype.EditData"/>
     <provider classname="beam.datatype.TissueData"/>
 
+    <!-- File I/O providers -->
+    <provider classname="beam.fileio.AlignmentFromMutationMatrix"/>
+
   </service>
 </package> 
