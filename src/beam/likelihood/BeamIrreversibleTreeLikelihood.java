@@ -1,5 +1,8 @@
 package beam.likelihood;
 
+import java.util.Arrays;
+import java.util.List;
+
 import beast.base.core.Description;
 import beast.base.core.Input;
 import beast.base.inference.CalculationNode;
@@ -16,7 +19,6 @@ import beast.base.evolution.tree.TreeInterface;
 import beam.likelihood.IrreversibleLikelihoodCore;
 import beam.substitutionmodel.BeamMutationSubstitutionModel;
 
-import java.util.Arrays;
 
 /**
  * Calculates the tree likelihood while considering the origin of the cell division process
@@ -47,8 +49,8 @@ public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
     /** State representing missing data */
     protected int missingDataState;
 
-    /** Number of patterns in the alignment */
-    protected int nrOfPatterns;
+    /** Number of sites in the alignment */
+    protected int nrOfSites;
 
     /** Transition probability matrix */
     protected double[] probabilities;
@@ -69,7 +71,9 @@ public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
     @Override
     public void initAndValidate() {
         // Get and validate inputs
-        data = dataInput.get();
+        substitutionModel = (BeamMutationSubstitutionModel) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
+        data = substitutionModel.getData(); // We use the data from the substitution model since the missing data state (-1) is replaced there during the rate matrix setup
+
         if (data.getTaxonCount() != treeInput.get().getLeafNodeCount()) {
             throw new IllegalArgumentException("Number of taxa in alignment does not match number of leaves in tree");
         }
@@ -82,17 +86,18 @@ public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
         // Initialize model parameters
         originHeight = originInput.get().getValue();
-        substitutionModel = (BeamMutationSubstitutionModel) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
         missingDataState = substitutionModel.getMissingState();
-        nrOfPatterns = data.getPatternCount();
+        nrOfSites = data.getPatternCount();
 
         // Initialize likelihood core
         int nrOfStates = substitutionModel.getStateCount();
         probabilities = new double[nrOfStates * nrOfStates];
-        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, nrOfStates, nrOfPatterns, missingDataState);
+        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, nrOfStates, nrOfSites, missingDataState);
 
         // Set initial states
         setStates(treeInput.get().getRoot());
+
+        System.out.println("DONE");
     }
 
     /**
@@ -101,16 +106,20 @@ public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
      * @param node The node to process
      */
     protected void setStates(Node node) {
+        System.out.println("Setting states for node " + node.getID());
         if (node.isLeaf()) {
+            System.out.println("IS LEAF");
             int taxonIndex = data.getTaxonIndex(node.getID());
             if (taxonIndex == -1) {
                 throw new RuntimeException("Could not find sequence " + node.getID() + " in the alignment");
             }
 
             // Get states directly without intermediate array
-            int[] states = new int[nrOfPatterns];
-            for (int i = 0; i < nrOfPatterns; i++) {
-                states[i] = data.getDataType().getStatesForCode(data.getPattern(taxonIndex, i))[0];
+            List<Integer> seq = data.getCounts().get(taxonIndex);
+            int[] states = new int[nrOfSites];
+            for (int i = 0; i < nrOfSites; i++) {
+                int state = seq.get(i);
+                states[i] = state;
             }
             likelihoodCore.setNodePartials(node.getNr(), states);
         } else {

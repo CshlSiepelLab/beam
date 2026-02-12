@@ -31,8 +31,10 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
     // Input for edit rates during the editing window
     public final Input<List<RealParameter>> editRatesInput = new Input<>("editRates", "Input rates at which edits are introduced into the genomic barcode during the editing window", new ArrayList<>(), Validate.OPTIONAL);
     // Input for edit rates during the editing window
-    final public Input<Alignment> dataInput = new Input<>("data", "EditData from which to calculate edit rates if they are not provided", Validate.OPTIONAL);
+    final public Input<Alignment> dataInput = new Input<>("data", "EditData from which to calculate edit rates if they are not provided", Validate.REQUIRED);
 
+    // Store a copy of data, since missing state will be replaced
+    private Alignment data;
     // Frequencies of states
     private double[] frequencies;
     // Edit rate parameter
@@ -48,10 +50,9 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
 
     @Override
     public void initAndValidate() {
-        // Make sure that data is provided if edit rates are not
-        if (editRatesInput.get().isEmpty() && dataInput.get() == null) {
-            throw new RuntimeException("Either edit rates or data to calculate edit rates must be provided!");
-        }
+        // Read in mutation data, which we need to properly handle the missing data state and to calculate edit rates if they are not provided
+        data = dataInput.get();
+        int taxonCount = data.getTaxonCount();
 
         // Edit rates can be provided
         Double editRateSum = 0.0;
@@ -74,11 +75,8 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
         // Or data can be provided from which we will compute the edit rates
         else {
             System.out.println("Calculating empirical edit rates from data.");
-            Alignment data = dataInput.get();
-            DataType dataType = data.getDataType();
-            int taxonCount = data.getTaxonCount();
 
-            // Determine maximum state in the data, which is the missing data state
+            // Determine number of states in the data
             int maxState = 0;
             for (int taxon = 0; taxon < taxonCount; taxon++) {
                 List<Integer> seq = data.getCounts().get(taxon);
@@ -88,17 +86,17 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
             }
 
             // Count occurrences of each state
-            double[] stateCounts = new double[maxState - 1]; // Exclude missing data (last state)
+            double[] stateCounts = new double[maxState];    // initializes edit rates, not including unedited (0) or missing (-1) states
             double total = 0.0;
 
             int maxValSeen = 0; // Make sure data is input in sequential order
             for (int taxon = 0; taxon < taxonCount; taxon++) {
                 List<Integer> seq = data.getCounts().get(taxon);
                 for (int value : seq) {
-                    if (value == 0 || value == maxState) {
+                    if (value == 0 || value == -1) {
                         continue; // Skip unedited and missing data
                     }
-                    stateCounts[value - 1] += 1;    // Use -1 index to skip unedited (0)
+                    stateCounts[value - 1] += 1;    // Use -1 index since java is 0-indexed and we are not including unedited (0) here in the editRates array
                     total += 1;
 
                     if (value > maxValSeen) {
@@ -112,7 +110,7 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
                 }
             }
 
-            // Convert counts → proportions for edit rates
+            // Normalize mutation counts to proportions for proper edit rates that sum to 1
             editRates = new Double[stateCounts.length];
             for (int i = 0; i < stateCounts.length; i++) {
                 double editRate = stateCounts[i] / total;
@@ -125,9 +123,9 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
             throw new RuntimeException("Sum of edit rates must be 1.0, but it is " + editRateSum + "!");
         }
 
-        nrOfStates = editRates.length + 2;
+        nrOfStates = editRates.length + 2;  // Number of states is number of edits + unedited state (0) + missing data state (-1)
 
-        silencingRate_ = silencingRateInput.get();
+        silencingRate_ = silencingRateInput.get();  // Rate for the missing data state (-1)
         double silencingRate = silencingRate_.getValue();
         storedSilencingRate = silencingRate;
 
@@ -138,11 +136,23 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
         // Missing data state is the last edit
         missingDataState = nrOfStates - 1;
 
+        // Overwrite the data to replace -1 states with the missing data state for proper use in the mutation model rate matrix
+        for (int taxon = 0; taxon < taxonCount; taxon++) {
+            List<Integer> seq = data.getCounts().get(taxon);
+            for (int i = 0; i < seq.size(); i++) {
+                if (seq.get(i) == -1) {
+                    seq.set(i, missingDataState); // Replace missing data state (-1) with missingDataState
+                }
+            }
+        }
+
         // Center root frequency on the unedited first state, regardless of input frequencies
         // as this is a property of the barcodes
         frequencies = new double[nrOfStates];
         frequencies[0] = 1;
     }
+
+
 
     @Override
     public void getTransitionProbabilities(Node node, double startTime, double endTime, double rate, double[] matrix) {
@@ -216,6 +226,16 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
      */
     public int getMissingState() {
         return missingDataState;
+    }
+
+    /**
+     * Returns the state representing missing data.
+     *
+     * @return The data, with missing state replaced by missingDataState
+     * to work in the substitution model rate matrix setup
+     */
+    public Alignment getData() {
+        return data;
     }
 }
 
