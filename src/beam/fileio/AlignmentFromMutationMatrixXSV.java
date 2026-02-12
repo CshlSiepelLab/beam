@@ -11,10 +11,11 @@ import java.io.IOException;
 
 /**
  * @author Stephen Staklinski
+ * Code based on classes from feast by Tim Vaughan
  */
 
 @Description("Populate a alignment from a mutation matrix.")
-public class AlignmentFromMutationMatrix extends Alignment {
+public class AlignmentFromMutationMatrixXSV extends Alignment {
 
     public Input<String> fileNameInput = new Input<>("fileName",
             "Name of file containing the mutation matrix.", Input.Validate.REQUIRED);
@@ -26,7 +27,7 @@ public class AlignmentFromMutationMatrix extends Alignment {
             "If true, skip first row. (Default true.)", true);
 
 
-    public AlignmentFromMutationMatrix() { }
+    public AlignmentFromMutationMatrixXSV() { }
 
     @Override
     public void initAndValidate() {
@@ -54,7 +55,7 @@ public class AlignmentFromMutationMatrix extends Alignment {
                 String[] fields = line.split(sep);
 
                 // Row names are taxon names, and are in the first column
-                taxonName = fields[0];  
+                taxonName = fields[0].trim();  
 
                 // Mutations are the remaining columns, and must be comma-separated for the Sequence datatype string
                 String mutations = String.join(",", java.util.Arrays.copyOfRange(fields, 1, fields.length));    
