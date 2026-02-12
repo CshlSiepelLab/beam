@@ -7,13 +7,11 @@
 
 
 <!-- Start user inputs -->
-<!-- Path to barcode editing data in fasta format with sites as a CSV string.
+<!-- Path to barcode editing data in TSV matrix format with sites as columns.
 Integer representations for barcode edits must increase sequentially starting
 from 1 ... going left to right across rows starting from the first taxa row. 0 represents
-the unedited state and missing data entries must be encoded as the largest integer
-value. If the setup is 0 for unedited and 1 ... 10 unique edits, then missing
-data would be encoded as 11. -->
-<data id="alignment" spec="feast.fileio.AlignmentFromFasta" fileName="examples/barcodes.fasta">
+the unedited state and missing data entries must be encoded as -1. -->
+<data id="alignment" spec="beam.fileio.AlignmentFromMutationMatrixXSV" fileName="examples/barcodes.tsv">
     <userDataType spec="beam.datatype.EditData"/>
 </data>
 
@@ -21,7 +19,7 @@ data would be encoded as 11. -->
 Also, specification of which tissue is the primary tissue and the names of other 
 tissues as a CSV string -->
 <data id="tissue" spec="beastclassic.evolution.alignment.AlignmentFromTrait">
-    <traitSet id="traitset" spec="feast.fileio.TraitSetFromXSV" fileName="examples/tissues.csv" taxa="@taxonset" taxonNameCol="0" skipFirstRow="false" sep="," traitname="discrete"/>
+    <traitSet id="traitset" spec="beam.fileio.TissueLabelsFromXSV" fileName="examples/tissues.csv" taxa="@taxonset"/>
     <userDataType id="tissueDatatype" spec="beam.datatype.TissueData" primaryTissue="LL" otherTissues="M,RL"/>
 </data>
 
@@ -40,7 +38,7 @@ of BEAST2. -->
 <!-- End user inputs -->
 
 
-<run id="mcmc" spec="MCMC" chainLength="5000000">
+<run id="mcmc" spec="MCMC" chainLength="1000000">
         <state id="state" spec="State" storeEvery="5000">
             <stateNode id="tree" spec="beam.tree.BeamStartingTreeFromNewick" taxa="@alignment" IsLabelledNewick="true" adjustTipHeights="true" newick="((((((M2.GTAGGCCCATTGCGGC-1:9.510559946850536,(RW.TTTATGCAGTCTTGCA-1:8.072604549720493,M2.CCCAATCGTTGCGTTA-1:8.072604549720493):1.4379553971300438):18.336689283152594,(RW.TGAGCCGGTTGTACAC-1:23.625341399188425,M2.TCGGTAAAGAAGGTGA-1:23.625341399188425):4.221907830814704):18.73537531391876,LL.GCGCAACAGGTAGCTG-1:46.582624543921895):1.616906704471214,((LL.TCAGATGGTTAAAGAC-1:38.54050829097753,LL.GGGTCTGAGCCCAGCT-1:38.54050829097753):9.263806172975377,RE.GAATGAAAGATGTCGG-1:47.804314463952906):0.39521673850226624):3.4712792274120967,(((((LL.GGTGAAGGTCTTCAAG-1:24.076415708572988,LL.GTGTTAGGTGATGATA-1:24.076415708572988):0.39521685754624225,LL.ACTGAACAGAGGACGG-1:24.471632566119233):12.985352531669678,((LL.CGTGAGCAGATAGCAT-1:8.613081992303519,LL.AAGTCTGTCCTAGTGA-1:8.613081992303519):28.448686166559202,(LL.GTACGTACATTGCGGC-1:0.3952166186746508,LL.ATTATCCAGTACGATA-1:0.3952166186746508):36.666551540188074):0.39521683789174394):13.423391800405849,RE.AGGGTGAAGATAGGAG-1:50.880377012266):0.3952167766618277,((M1.TTAACTCGTAGCGTCC-1:42.93637252804264,(LL.GTGCAGCGTTTGTTTC-1:0.3952166273332763,LL.GAACATCCACGTTGGC-1:0.3952166273332763):42.541155900709356):2.172139108941477,RE.CTCGGGACATTTGCTT-1:45.10851163698411):6.167082019845732):0.39521673278285896):1.9339728194574037,(((LL.CAGATCACACAGTCGC-1:35.941898253411075,LL.ACACCGGCACCAGATT-1:35.941898253411075):8.621148802159707,LL.GTCGGGTCAGGATCGA-1:44.563047055570784):2.116839662780363,(((LL.GCGCAACTCAACACCA-1:6.564442025629916,LL.ATTTCTGGTGAAATCA-1:6.564442025629916):39.325009398131165,LL.AACACGTTCTGCTGTC-1:45.88945142376108):0.3952181375659104,LL.ACCGTAATCCTCTAGC-1:46.284669561326986):0.39521692778528655):6.924896512765744):0.39521665883190477">
                 <taxonset id="taxonset" spec="TaxonSet" alignment="@alignment"/>
@@ -143,7 +141,7 @@ of BEAST2. -->
     <operator id="updownBD" spec="UpDownOperator" scaleFactor="0.8" weight="30" up="@birthRate" down="@deathRate"/>
 
     <!-- Loggers -->
-        <logger id="tracelog" spec="Logger" fileName="result.log" logEvery="10000" model="@posterior" sanitiseHeaders="true" sort="smart">
+        <logger id="tracelog" spec="Logger" fileName="result.log" logEvery="1000" model="@posterior" sanitiseHeaders="true" sort="smart">
             <log idref="posterior"/>
             <log idref="likelihood"/>
             <log idref="prior"/>
@@ -160,14 +158,12 @@ of BEAST2. -->
             <log idref="piPrimaryTissueFreq"/>
         </logger>
 
-        <logger id="screenlog" spec="Logger" logEvery="10000">
+        <logger id="screenlog" spec="Logger" logEvery="1000">
             <log idref="posterior"/>
             <log spec="util.ESS" arg="@posterior"/>
-            <log idref="likelihood"/>
-            <log idref="prior"/>
         </logger>
 
-        <logger id="treeWithTraitLogger" spec="Logger" fileName="result.trees" logEvery="10000" mode="tree">
+        <logger id="treeWithTraitLogger" spec="Logger" fileName="result.trees" logEvery="1000" mode="tree">
                 <log id="treeWithTraitLoggerItem" spec="beastclassic.evolution.tree.TreeWithTraitLogger" tree="@tree">
                     <metadata idref="traitLikelihood"/>
                 </log>
