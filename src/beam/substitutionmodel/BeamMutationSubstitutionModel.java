@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
+import java.util.HashMap;
+import java.util.Map;
 
 import beast.base.core.Description;
 import beast.base.core.Input;
@@ -17,12 +19,12 @@ import beast.base.inference.parameter.RealParameter;
 import beast.base.evolution.alignment.Alignment;
 
 /**
- * TideTree substitution model that can be used with the modified BEAGLE tree likelihood
+ * CRISPR substitution model (based on TideTree) that can be used with the modified BEAGLE tree likelihood
  * under the assumption that editing happens during the entire experiment.
  *
  * @author Stephen Staklinski
  */
-@Description("TideTree substitution model that can be used with the modified BEAGLE tree likelihood" +
+@Description("CRISPR substitution model (based on TideTree) that can be used with the modified BEAGLE tree likelihood" +
             "under the assumption that editing happens during the entire experiment.")
 public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
 
@@ -53,6 +55,54 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
         // Read in mutation data, which we need to properly handle the missing data state and to calculate edit rates if they are not provided
         data = dataInput.get();
         int taxonCount = data.getTaxonCount();
+
+        /* Mutations must be in sequential order to map to indices in the rate matrix properly. 
+        Check if they are sequential, and if not then replace them to be so, mapping mutations
+        in the order in which they are input to the edit rates increasing sequentially, so if
+        the first mutation is 34 then editRates[0] corresponds to mutation 34, 
+        if the second mutation is 12 then editRates[1] corresponds to mutation 12, etc.
+        */
+        boolean isSequential = true;
+        int maxValSeen = 0; // Make sure data is input in sequential order
+        for (int taxon = 0; taxon < taxonCount; taxon++) {
+            List<Integer> seq = data.getCounts().get(taxon);
+            for (int value : seq) {
+                if (value <= 0) continue;   // skip unedited (0) and missing (-1) states
+                if (value == maxValSeen + 1) maxValSeen = value;
+                else if (value > maxValSeen + 1) {
+                    isSequential = false; 
+                    break;
+                }
+            }
+            if (!isSequential) break;
+        }
+
+        if (!isSequential) {
+            System.out.println("Input mutations are not in sequential order. Replacing with sequential values to match edit rates.");
+            // Overwrite the data to have sequential states, mapping in the order in which they are input across columns from the first taxon row down to other taxa
+            Map<Integer, Integer> map = new HashMap<>();  // input mut -> sequential mut
+            int nextSequentialMut = 1; // Start sequential mutations at 1 since 0 is unedited
+            for (int taxon = 0; taxon < taxonCount; taxon++) {
+                List<Integer> seq = data.getCounts().get(taxon);
+                for (int i = 0; i < seq.size(); i++) {
+                    int inputMut = seq.get(i);
+                    if (inputMut <= 0) continue;   // skip unedited (0) and missing (-1) states
+                    Integer sequentialMut = map.get(inputMut);
+                    if (sequentialMut == null) {
+                        sequentialMut = nextSequentialMut++;
+                        map.put(inputMut, sequentialMut);
+                    }
+                    seq.set(i, sequentialMut);
+                }
+            }
+        }
+
+        for (int taxon = 0; taxon < taxonCount; taxon++) {
+            List<Integer> seq = data.getCounts().get(taxon);
+            System.out.println("Taxon " + taxon + ": " + seq);
+        }
+
+
 
         // Edit rates can be provided
         Double editRateSum = 0.0;
@@ -89,24 +139,12 @@ public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
             double[] stateCounts = new double[maxState];    // initializes edit rates, not including unedited (0) or missing (-1) states
             double total = 0.0;
 
-            int maxValSeen = 0; // Make sure data is input in sequential order
             for (int taxon = 0; taxon < taxonCount; taxon++) {
                 List<Integer> seq = data.getCounts().get(taxon);
                 for (int value : seq) {
-                    if (value == 0 || value == -1) {
-                        continue; // Skip unedited and missing data
-                    }
+                    if (value <= 0) continue;   // skip unedited (0) and missing (-1) states
                     stateCounts[value - 1] += 1;    // Use -1 index since java is 0-indexed and we are not including unedited (0) here in the editRates array
                     total += 1;
-
-                    if (value > maxValSeen) {
-                        if (value == maxValSeen + 1) {
-                            maxValSeen = value;
-                        }
-                        else {
-                            throw new RuntimeException("States in data must be sequentially ordered starting from 0!");
-                        }
-                    }
                 }
             }
 

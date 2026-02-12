@@ -8,9 +8,7 @@
 
 <!-- Start user inputs -->
 <!-- Path to barcode editing data in TSV matrix format with sites as columns.
-Integer representations for barcode edits must increase sequentially starting
-from 1 ... going left to right across rows starting from the first taxa row. 0 represents
-the unedited state and missing data entries must be encoded as -1. -->
+The unedited state is 0 and missing data state is -1. -->
 <data id="alignment" spec="beam.fileio.AlignmentFromMutationMatrixXSV" fileName="examples/barcodes.tsv">
     <userDataType spec="beam.datatype.EditData"/>
 </data>
