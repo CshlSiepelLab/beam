@@ -37,7 +37,7 @@ public class BeamStartingTreeFromNewick extends TreeParser {
             System.out.println("Original input starting tree: ");
             System.out.println(getRoot().toNewick());
 
-            double desired = originInput.get().getValue() - 1e-6;
+            double desired = originInput.get().getValue() - 0.1;
             Node root = getRoot();
             double current = root.getHeight();
             double factor = desired / current;

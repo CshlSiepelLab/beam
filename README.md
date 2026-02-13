@@ -13,7 +13,6 @@ BEAM is a BEAST2 package for Bayesian cancer migration graph inference from CRIS
 2. Install BEAGLE from [beagle-dev.github.io](https://beagle-dev.github.io/)
 3. Install required BEAST2 packages based on xml declaration. The example uses the following:
    ```bash
-   packagemanager -add BDSKY
    packagemanager -add BEAST_CLASSIC
    ```
 4. Install BEAM:

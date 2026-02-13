@@ -46,8 +46,8 @@ of BEAST2. -->
             <parameter id="relativeGeoRates.s:tissue" spec="parameter.RealParameter" lower="0" dimension="3" name="stateNode">1</parameter>
             <parameter id="traitClockRate" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
             <parameter id="piPrimaryTissueFreq" spec="parameter.RealParameter" estimate="true" lower="0" upper="1" name="stateNode">0.5</parameter>
-            <parameter id="birthRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="1">0.006</parameter>
-            <parameter id="deathRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="1">0.0001</parameter>
+            <parameter id="birthDiffRate" spec="parameter.RealParameter" lower="1e-12" name="stateNode">0.005</parameter>
+            <parameter id="relativeDeathRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="0.999999">0.25</parameter>
         </state>
         
         
@@ -55,10 +55,8 @@ of BEAST2. -->
             
             <distribution id="prior" spec="CompoundDistribution">
 
-                <distribution id="birthDeathSamplingModel" spec="bdsky.evolution.speciation.BirthDeathSkylineModel"
-                          conditionOnSurvival="True" tree="@tree" origin="@originTime" contemp="true"
-                          birthRate="@birthRate" deathRate="@deathRate" rho="1" samplingRate="0" >
-                </distribution>
+                <distribution id="birthDeath" spec="beast.base.evolution.speciation.BirthDeathGernhard08Model" 
+                    tree="@tree" originHeight="@originTime" birthDiffRate="@birthDiffRate" relativeDeathRate="@relativeDeathRate"/>
 
                 <prior id="silencingRatePrior" name="distribution" x="@silencingRate">
                     <Exponential name="distr">
@@ -88,12 +86,14 @@ of BEAST2. -->
                     <Uniform name="distr" lower="0" upper="1"/>
                 </prior>
 
-                <prior id="birthRatePrior" name="distribution" x="@birthRate">
-                    <Uniform name="distr" lower="0" upper="1"/>
+                <prior id="birthDiffRatePrior" name="distribution" x="@birthDiffRate">
+                    <Exponential name="distr">
+                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">1.0</parameter>
+                    </Exponential>
                 </prior>
-                
-                <prior id="deathRatePrior" name="distribution" x="@deathRate">
-                    <Uniform name="distr" lower="0" upper="1"/>
+
+                <prior id="relativeDeathRatePrior" name="distribution" x="@relativeDeathRate">
+                    <Uniform name="distr" lower="0" upper="0.999999"/>
                 </prior>
 
             </distribution>
@@ -134,9 +134,8 @@ of BEAST2. -->
     <operator id="tissueClockRateScaler" spec="ScaleOperator" parameter="@traitClockRate" scaleFactor="0.8" weight="3"/>
     <operator id="piPrimaryTissueFreqScaler" spec="ScaleOperator" parameter="@piPrimaryTissueFreq" scaleFactor="0.8" weight="3"/>
     <!-- Operators on phylodynamic prior parameters -->
-    <operator id="birthRateScaler" spec="ScaleOperator" parameter="@birthRate" scaleFactor="0.8" weight="3"/>
-    <operator id="deathRateScaler" spec="ScaleOperator" parameter="@deathRate" scaleFactor="0.8" weight="3"/>
-    <operator id="updownBD" spec="UpDownOperator" scaleFactor="0.8" weight="30" up="@birthRate" down="@deathRate"/>
+    <operator id="birthDiffRateScaler" spec="ScaleOperator" parameter="@birthDiffRate" scaleFactor="0.8" weight="3"/>
+    <operator id="relativeDeathRateScaler" spec="ScaleOperator" parameter="@relativeDeathRate" scaleFactor="0.8" weight="3"/>
 
     <!-- Loggers -->
         <logger id="tracelog" spec="Logger" fileName="result.log" logEvery="1000" model="@posterior" sanitiseHeaders="true" sort="smart">
@@ -151,8 +150,8 @@ of BEAST2. -->
             <log id="tissueSubstModelLogger" spec="beam.substitutionmodel.BeamTissueSubstitutionModelLogger" dataType="@tissueDatatype" model="@substModelMigration"/>
             <log idref="treeLikelihood"/>
             <log idref="traitLikelihood"/>
-            <log idref="birthRate"/>
-            <log idref="deathRate"/>
+            <log idref="birthDiffRate"/>
+            <log idref="relativeDeathRate"/>
             <log idref="piPrimaryTissueFreq"/>
         </logger>
 
