@@ -123,13 +123,13 @@ of BEAST2. -->
 
     <!-- Operators defining what proposals are made during MCMC iterations -->
     <!-- Tree topology moves -->
-    <operator  spec="Exchange" isNarrow="true" tree="@tree" weight="15"/>
-    <operator  spec="Exchange" isNarrow="false" tree="@tree" weight="3"/>
+    <operator id="exchangeNarrow" spec="Exchange" isNarrow="true" tree="@tree" weight="15"/>
+    <operator id="exchangeWide" spec="Exchange" isNarrow="false" tree="@tree" weight="3"/>
     <operator id="wilsonBalding" spec="WilsonBalding" tree="@tree" weight="1"/>
     <!-- Branch-length / node-height moves -->
-    <operator  spec="Uniform" tree="@tree" weight="10"/>
-    <operator  spec="SubtreeSlide" tree="@tree" weight="10"/>
-    <operator spec="SubtreeSlide" tree="@tree" size="15" weight="3"/>
+    <operator id="uniform" spec="Uniform" tree="@tree" weight="10"/>
+    <operator id="subtreeSlide" spec="SubtreeSlide" tree="@tree" weight="10"/>
+    <operator id="subtreeSlideLarge" spec="SubtreeSlide" tree="@tree" size="15" weight="3"/>
     <!-- Operators on barcode editing parameters-->
     <operator id="clockRateScaler" spec="ScaleOperator" parameter="@clockRate.c" scaleFactor="0.8" weight="3"/>
     <operator id="silencingRateScaler" spec="ScaleOperator" parameter="@silencingRate" scaleFactor="0.8" weight="3"/>
