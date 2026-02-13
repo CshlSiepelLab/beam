@@ -124,17 +124,17 @@ of BEAST2. -->
     <!-- Operators defining what proposals are made during MCMC iterations -->
     <!-- Tree topology moves -->
     <operator  spec="Exchange" isNarrow="true" tree="@tree" weight="15"/>
-    <operator  spec="Exchange" isNarrow="false" tree="@tree" weight="15"/>
-    <operator id="wilsonBalding" spec="WilsonBalding" tree="@tree" weight="3"/>
+    <operator  spec="Exchange" isNarrow="false" tree="@tree" weight="3"/>
+    <operator id="wilsonBalding" spec="WilsonBalding" tree="@tree" weight="1"/>
     <!-- Branch-length / node-height moves -->
-    <operator  spec="Uniform" tree="@tree" weight="15"/>
-    <operator  spec="SubtreeSlide" tree="@tree" weight="3"/>
-    <operator spec="SubtreeSlide" tree="@tree" weight="3.0" size="15"/>
+    <operator  spec="Uniform" tree="@tree" weight="10"/>
+    <operator  spec="SubtreeSlide" tree="@tree" weight="10"/>
+    <operator spec="SubtreeSlide" tree="@tree" size="15" weight="3"/>
     <!-- Operators on barcode editing parameters-->
     <operator id="clockRateScaler" spec="ScaleOperator" parameter="@clockRate.c" scaleFactor="0.8" weight="3"/>
     <operator id="silencingRateScaler" spec="ScaleOperator" parameter="@silencingRate" scaleFactor="0.8" weight="3"/>
     <!-- Operators on tissue model parameters -->
-    <operator id="georateScaler.s:tissue" spec="ScaleOperator" parameter="@relativeGeoRates.s:tissue" scaleAllIndependently="true" scaleFactor="0.90" weight="15"/>
+    <operator id="georateScaler.s:tissue" spec="ScaleOperator" parameter="@relativeGeoRates.s:tissue" scaleAllIndependently="true" scaleFactor="0.9" weight="10"/>
     <operator id="tissueClockRateScaler" spec="ScaleOperator" parameter="@traitClockRate" scaleFactor="0.8" weight="3"/>
     <operator id="piPrimaryTissueFreqScaler" spec="ScaleOperator" parameter="@piPrimaryTissueFreq" scaleFactor="0.8" weight="3"/>
     <!-- Operators on phylodynamic prior parameters -->
