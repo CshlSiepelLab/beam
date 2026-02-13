@@ -9,16 +9,14 @@
 <!-- Start user inputs -->
 <!-- Path to barcode editing data in TSV matrix format with sites as columns.
 The unedited state is 0 and missing data state is -1. -->
-<data id="alignment" spec="beam.fileio.AlignmentFromMutationMatrixXSV" fileName="examples/barcodes.tsv">
+<data id="alignment" spec="beam.fileio.AlignmentFromXSV" fileName="examples/barcodes.tsv">
     <userDataType spec="beam.datatype.EditData"/>
 </data>
 
 <!-- Path to known tip tissue labels as a CSV file with tipname,tissue format.
-Also, specification of which tissue is the primary tissue and the names of other 
-tissues as a CSV string -->
-<data id="tissue" spec="beastclassic.evolution.alignment.AlignmentFromTrait">
-    <traitSet id="traitset" spec="beam.fileio.TissueLabelsFromXSV" fileName="examples/tissues.csv" taxa="@taxonset"/>
-    <userDataType id="tissueDatatype" spec="beam.datatype.TissueData" primaryTissue="LL" otherTissues="M,RL"/>
+Also, specification of which tissue is the primary tissue -->
+<data id="tissue" spec="beam.fileio.TissueLabelsFromXSV" fileName="examples/tissues.csv" sep="," skipHeaderRow="false">
+    <userDataType id="tissueDatatype" spec="beam.datatype.TissueData" primaryTissue="LL"/>
 </data>
 
 <!-- Length of the experiment (+0.0001 for numerical stability) in time units that the tree will be inferred in -->

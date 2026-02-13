@@ -29,7 +29,7 @@
     <provider classname="beam.datatype.TissueData"/>
 
     <!-- File I/O providers -->
-    <provider classname="beam.fileio.AlignmentFromMutationMatrixXSV"/>
+    <provider classname="beam.fileio.AlignmentFromXSV"/>
     <provider classname="beam.fileio.TissueLabelsFromXSV"/>
 
   </service>

@@ -18,7 +18,7 @@ public class EditData extends Base {
 
     @Override
     public String getTypeDescription() {
-        return "editData";
+        return "EditData";
     }
 
     @Override

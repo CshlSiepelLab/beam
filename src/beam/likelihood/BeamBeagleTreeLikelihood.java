@@ -1027,6 +1027,10 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
     private void setupTipStatesAndWeights() {
         Node[] nodes = treeInput.get().getNodesAsArray();
         for (int i = 0; i < tipCount; i++) {
+
+            // DEBUGGING
+            System.out.println("Setting tip states for node " + nodes[i].getID());
+
             int taxon = getTaxonIndex(nodes[i].getID(), dataInput.get());
             setStates(beagle, i, taxon);
         }

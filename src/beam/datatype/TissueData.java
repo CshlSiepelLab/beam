@@ -12,21 +12,36 @@ import beast.base.evolution.datatype.DataType.Base;
         "and automatically creates a code map for the tissues.")
 public class TissueData extends Base {
 
-    final public Input<String> primaryTissueInput = new Input<>("primaryTissue", "the name of the character", Validate.REQUIRED);
-    final public Input<String> otherTissuesInput = new Input<>("otherTissues", "comma-separated list of other tissues", Validate.REQUIRED);
+    final public Input<String> primaryTissueInput = new Input<>("primaryTissue", "Primary tissue name", Validate.REQUIRED);
+    final public Input<String> otherTissuesInput = new Input<>("otherTissues", "Optional comma-separated list of other tissue names. If not provided, " +
+        "then other tissues will be read from the input data.", Validate.OPTIONAL);
 
     public void initAndValidate(){
-        codeMap = primaryTissueInput.get() + "," + otherTissuesInput.get();
-        stateCount = codeMap.split(",").length;
+        if (otherTissuesInput.get() != null) {
+            codeMap = primaryTissueInput.get() + "," + otherTissuesInput.get();
+            stateCount = codeMap.split(",").length;
+            System.out.println("Internal ordering set based on input otherTissues: " + codeMap);
+        } else {
+            System.out.println("Only the primary tissue name was provided, so reading other tissue names in from the input data.");
+            codeMap = null;
+        }
     }
 
     @Override
     public String getTypeDescription() {
-        return "tissueData";
+        return "TissueData";
     }
 
     @Override
     public int[] getStatesForCode(int code) {
         return new int[]{code};
+    }
+
+    public void setCodeMap(String newCodeMap) {
+        codeMap = newCodeMap;
+    }
+
+    public void setStateCount(int newStateCount) {
+        stateCount = newStateCount;
     }
 }
