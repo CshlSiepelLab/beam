@@ -17,7 +17,7 @@ import beast.base.evolution.tree.Tree;
 import beast.base.evolution.tree.TreeInterface;
 
 import beam.likelihood.IrreversibleLikelihoodCore;
-import beam.substitutionmodel.BeamMutationSubstitutionModel;
+import beam.substitutionmodel.CrisprSubstitutionModel;
 
 
 /**
@@ -30,7 +30,7 @@ import beam.substitutionmodel.BeamMutationSubstitutionModel;
 @Description("Calculates the tree likelihood while considering the origin of the cell division process " +
             "and using a simplified pruning algorithm to save on computations given the irreversible " +
             "assumptions of the substitution model.")
-public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
+public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
     /** Input for the origin time of the cell division process */
     public Input<RealParameter> originInput = new Input<>("origin",
@@ -44,7 +44,7 @@ public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
     protected Double originHeight;
 
     /** Substitution model for mutations */
-    protected BeamMutationSubstitutionModel substitutionModel;
+    protected CrisprSubstitutionModel substitutionModel;
 
     /** State representing missing data */
     protected int missingDataState;
@@ -71,7 +71,7 @@ public class BeamIrreversibleTreeLikelihood extends GenericTreeLikelihood {
     @Override
     public void initAndValidate() {
         // Get and validate inputs
-        substitutionModel = (BeamMutationSubstitutionModel) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
+        substitutionModel = (CrisprSubstitutionModel) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
         data = substitutionModel.getData(); // We use the data from the substitution model since the missing data state (-1) is replaced there during the rate matrix setup
 
         if (data.getTaxonCount() != treeInput.get().getLeafNodeCount()) {

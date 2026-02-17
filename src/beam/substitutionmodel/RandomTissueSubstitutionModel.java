@@ -19,7 +19,7 @@ import beast.base.evolution.substitutionmodel.GeneralSubstitutionModel;
 
 @Description("Random substitution model implementation that simply returns equillibrium distribution transition probabilities.")
 
-public class BeamRandomTissueSubstitutionModel extends GeneralSubstitutionModel {
+public class RandomTissueSubstitutionModel extends GeneralSubstitutionModel {
 
     public Input<RealParameter> piInput = new Input<>("pi", "Stationary frequency of the first state", Validate.REQUIRED);
 

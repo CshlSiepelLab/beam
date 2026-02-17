@@ -17,7 +17,7 @@ import java.util.Arrays;
  **/
 
 @Description("Logger for BEAM tissue subsitution models.")
-public class BeamTissueSubstitutionModelLogger extends BEASTObject implements Loggable{
+public class TissueSubstitutionModelLogger extends BEASTObject implements Loggable{
 
     public Input<GeneralSubstitutionModel> modelInput = new Input<>("model", "Beam general substitution model.", Input.Validate.REQUIRED);
     public Input<TissueData> dataTypeInput = new Input<>("dataType", "User data type for the location data to generate more readable logs.", Input.Validate.REQUIRED);
@@ -25,7 +25,7 @@ public class BeamTissueSubstitutionModelLogger extends BEASTObject implements Lo
     private int nrOfStates;
     protected GeneralSubstitutionModel model;
 
-    public BeamTissueSubstitutionModelLogger() { }
+    public TissueSubstitutionModelLogger() { }
 
     @Override
     public void initAndValidate() {

@@ -5,24 +5,24 @@
 
   <service type="beast.base.core.BEASTInterface">
     <!-- Tree-related providers -->
-    <provider classname="beam.tree.BeamStartingTreeFromNewick"/>
+    <provider classname="beam.tree.StartingTreeFromNewick"/>
 
     <!-- Likelihood-related providers -->
-    <provider classname="beam.likelihood.BeamIrreversibleTreeLikelihood"/>
+    <provider classname="beam.likelihood.IrreversibleTreeLikelihood"/>
     <provider classname="beam.likelihood.IrreversibleLikelihoodCore"/>
     <provider classname="beam.likelihood.BeamBeagleTreeLikelihood"/>
-    <provider classname="beam.likelihood.BeamBeagleAncestralTissueLikelihood"/>
+    <provider classname="beam.likelihood.BeagleAncestralTissueLikelihood"/>
 
     <!-- Substitution model providers -->
-    <provider classname="beam.substitutionmodel.BeamMutationSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamRandomTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.CrisprSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.RandomTissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.BeamNoDirectSeedingSpecifiedTissueGTRTissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.BeamGtiTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamGtrTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.TissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.BeamPrimaryOnlyTissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.BeamPrimaryMetOnlyTissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.BeamPrimaryMetReseedingAllTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamTissueSubstitutionModelLogger"/>
+    <provider classname="beam.substitutionmodel.TissueSubstitutionModelLogger"/>
 
     <!-- Datatype providers -->
     <provider classname="beam.datatype.EditData"/>

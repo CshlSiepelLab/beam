@@ -23,7 +23,7 @@ import beast.base.inference.parameter.RealParameter;
  * @author Stephen Staklinski
  */
 @Description("General GTR substitution model implementation.")
-public class BeamGtrTissueSubstitutionModel extends GeneralSubstitutionModel {
+public class TissueSubstitutionModel extends GeneralSubstitutionModel {
 
     /** Input for the stationary frequency of the first state */
     public Input<RealParameter> piInput = new Input<>("pi",

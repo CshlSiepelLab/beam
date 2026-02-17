@@ -15,7 +15,7 @@ import beast.base.inference.parameter.RealParameter;
  */
 @Description("This class uses the normal TreeParser abilities of reading in a starting tree" +
             " while also taking into account the origin tree height.")
-public class BeamStartingTreeFromNewick extends TreeParser {
+public class StartingTreeFromNewick extends TreeParser {
 
     // Optional file input to read a Newick string from.
     public Input<String> newickFileInput = new Input<>("newickFile",

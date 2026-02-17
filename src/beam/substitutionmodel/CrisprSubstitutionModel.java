@@ -26,7 +26,7 @@ import beast.base.evolution.alignment.Alignment;
  */
 @Description("CRISPR substitution model (based on TideTree) that can be used with the modified BEAGLE tree likelihood" +
             "under the assumption that editing happens during the entire experiment.")
-public class BeamMutationSubstitutionModel extends SubstitutionModel.Base {
+public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     // Input for the silencing rate throughout the experiment
     public final Input<RealParameter> silencingRateInput = new Input<>("silencingRate", "Rate at which barcodes are silenced throughout the entire experiment", Validate.REQUIRED);

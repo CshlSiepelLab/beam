@@ -36,7 +36,7 @@ of BEAST2. -->
 
 <run id="mcmc" spec="MCMC" chainLength="400000">
         <state id="state" spec="State" storeEvery="5000">
-            <stateNode id="tree" spec="beam.tree.BeamStartingTreeFromNewick" taxa="@alignment" IsLabelledNewick="true" newickFile="examples/startingTree.nwk">
+            <stateNode id="tree" spec="beam.tree.StartingTreeFromNewick" taxa="@alignment" IsLabelledNewick="true" newickFile="examples/startingTree.nwk">
                 <taxonset id="taxonset" spec="TaxonSet" alignment="@alignment"/>
             </stateNode>
             <parameter id="silencingRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="1000">0.1</parameter>
@@ -99,18 +99,18 @@ of BEAST2. -->
             
             <distribution id="likelihood" spec="CompoundDistribution" useThreads="true">
                 
-                <distribution id="treeLikelihood" spec="beam.likelihood.BeamIrreversibleTreeLikelihood" origin="@originTime" data="@alignment" tree="@tree">
+                <distribution id="treeLikelihood" spec="beam.likelihood.IrreversibleTreeLikelihood" origin="@originTime" data="@alignment" tree="@tree">
                     <siteModel spec="SiteModel" id="siteModel" mutationRate="1" gammaCategoryCount="1">
-                        <substModel id="substModel" spec="beam.substitutionmodel.BeamMutationSubstitutionModel" silencingRate="@silencingRate" data="@alignment">
+                        <substModel id="substModel" spec="beam.substitutionmodel.CrisprSubstitutionModel" silencingRate="@silencingRate" data="@alignment">
                             <frequencies spec="beast.base.evolution.substitutionmodel.Frequencies" frequencies="1" estimate="false"/>
                         </substModel>
                     </siteModel>
                     <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@clockRate.c"/>
                 </distribution>
                 
-                <distribution id="traitLikelihood" spec="beam.likelihood.BeamBeagleAncestralTissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
+                <distribution id="traitLikelihood" spec="beam.likelihood.BeagleAncestralTissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
                     <siteModel id="geoSiteModel.s:tissue" spec="SiteModel" gammaCategoryCount="1" mutationRate="1">
-                        <substModel id="substModelMigration" spec="beam.substitutionmodel.BeamGtrTissueSubstitutionModel" rates="@relativeGeoRates.s:tissue" pi="@piPrimaryTissueFreq" frequencies="@rootTissueFrequencies"/>
+                        <substModel id="substModelMigration" spec="beam.substitutionmodel.TissueSubstitutionModel" rates="@relativeGeoRates.s:tissue" pi="@piPrimaryTissueFreq" frequencies="@rootTissueFrequencies"/>
                     </siteModel>
                     <branchRateModel id="StrictClockModel.c:tissue" spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@traitClockRate"/>
                 </distribution>
@@ -149,7 +149,7 @@ of BEAST2. -->
             <log idref="clockRate.c"/>
             <log idref="relativeGeoRates.s:tissue"/>
             <log idref="traitClockRate"/>
-            <log id="tissueSubstModelLogger" spec="beam.substitutionmodel.BeamTissueSubstitutionModelLogger" dataType="@tissueDatatype" model="@substModelMigration"/>
+            <log id="tissueSubstModelLogger" spec="beam.substitutionmodel.TissueSubstitutionModelLogger" dataType="@tissueDatatype" model="@substModelMigration"/>
             <log idref="treeLikelihood"/>
             <log idref="traitLikelihood"/>
             <log idref="birthDiffRate"/>

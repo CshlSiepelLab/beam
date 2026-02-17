@@ -31,7 +31,7 @@ import beastclassic.evolution.likelihood.LeafTrait;
  * @author Stephen Staklinski
  */
 @Description("Ancestral State Tree Likelihood that extends the custom Beagle likelihood with origin input for the branch above the root.")
-public class BeamBeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood implements TreeTraitProvider {
+public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood implements TreeTraitProvider {
 
     // Key for states trait
     public static final String STATES_KEY = "states";
