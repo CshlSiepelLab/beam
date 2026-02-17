@@ -336,8 +336,9 @@
         <mkdir dir="${examples}" />
         <copy todir="${pack}/examples">
             <fileset dir="${examples}" includes="**/*.xml" />
-            <fileset dir="${examples}" includes="**/*.fasta" />
+            <fileset dir="${examples}" includes="**/*.tsv" />
             <fileset dir="${examples}" includes="**/*.csv" />
+            <fileset dir="${examples}" includes="**/*.nwk" />
         </copy>
 
         <mkdir dir="${fxtemplates}" />

@@ -11,3 +11,6 @@ build
 dist
 build*
 beast*
+
+# Ignore codex index file
+CODEBASE_INDEX.md
