@@ -18,7 +18,7 @@ import beast.base.evolution.substitutionmodel.ComplexSubstitutionModel;
 
 @Description("Substitution model that only allows primary seeding and met to met seeding with each as their own free parameter and no reseeding allowed.")
 
-public class BeamPrimaryOnlyTissueSubstitutionModel extends ComplexSubstitutionModel {
+public class PrimaryMetOnlyTissueSubstitutionModel extends ComplexSubstitutionModel {
 
     public Input<RealParameter> piInput = new Input<>("pi", "Stationary frequency of the first state", Validate.REQUIRED);
 
@@ -31,7 +31,7 @@ public class BeamPrimaryOnlyTissueSubstitutionModel extends ComplexSubstitutionM
 
         // Verify the number of input rates is correct
         int nrInputRates = ratesInput.get().getDimension();
-        if (nrInputRates != 1 ) {
+        if (nrInputRates != 2 ) {
             throw new IllegalArgumentException(
                 "The number of input rates must be equal to 2 (one primary seeding rate and one met to met seeding rate), but it is " 
                 + nrInputRates 
@@ -62,10 +62,12 @@ public class BeamPrimaryOnlyTissueSubstitutionModel extends ComplexSubstitutionM
         // setup off diagonal rates
         for (int i = 0; i < nrOfStates; i++) {
             for (int j = 0; j < nrOfStates; j++) {
-                if (i == 0 && j != 0) {
+                if (i == j || j == 0) {
+                    rateMatrix[i][j] = 0;
+                } else if (i == 0) {
                     rateMatrix[i][j] = relativeRates[0];
                 } else {
-                    rateMatrix[i][j] = 0;
+                    rateMatrix[i][j] = relativeRates[1];
                 }
             }
         }

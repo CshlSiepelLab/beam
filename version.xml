@@ -15,13 +15,12 @@
 
     <!-- Substitution model providers -->
     <provider classname="beam.substitutionmodel.CrisprSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.RandomTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamNoDirectSeedingSpecifiedTissueGTRTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamGtiTissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.TissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamPrimaryOnlyTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamPrimaryMetOnlyTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.BeamPrimaryMetReseedingAllTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.RandomTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.PrimaryOnlyTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.PrimaryMetOnlyTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.PrimaryMetReseedingAllTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.NoDirectSeedingSpecifiedTissueGTRTissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.TissueSubstitutionModelLogger"/>
 
     <!-- Datatype providers -->

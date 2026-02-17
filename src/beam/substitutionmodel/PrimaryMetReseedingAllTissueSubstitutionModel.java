@@ -18,7 +18,7 @@ import beast.base.evolution.substitutionmodel.ComplexSubstitutionModel;
 
 @Description("Substitution model that allows all seeding topologies, fixing each of primary only, met to met only, and reseeding to their own free parameter.")
 
-public class BeamPrimaryMetReseedingAllTissueSubstitutionModel extends ComplexSubstitutionModel {
+public class PrimaryMetReseedingAllTissueSubstitutionModel extends ComplexSubstitutionModel {
 
     public Input<RealParameter> piInput = new Input<>("pi", "Stationary frequency of the first state", Validate.REQUIRED);
 
