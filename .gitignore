@@ -12,5 +12,5 @@ dist
 build*
 beast*
 
-# Ignore codex index file
-CODEBASE_INDEX.md
+# Ignore llm index file
+AGENTS.md

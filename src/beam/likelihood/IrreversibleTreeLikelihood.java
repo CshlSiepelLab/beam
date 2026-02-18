@@ -39,22 +39,14 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
     /** Alignment data */
     protected Alignment data;
-
     /** Height of the origin node */
     protected Double originHeight;
-
     /** Substitution model for mutations */
     protected CrisprSubstitutionModel substitutionModel;
-
-    /** State representing missing data */
-    protected int missingDataState;
-
     /** Number of sites in the alignment */
     protected int nrOfSites;
-
     /** Transition probability matrix */
-    protected double[] probabilities;
-
+    protected double[][] probabilities;
     /** Core likelihood calculation engine */
     protected IrreversibleLikelihoodCore likelihoodCore;
 
@@ -86,13 +78,15 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
         // Initialize model parameters
         originHeight = originInput.get().getValue();
-        missingDataState = substitutionModel.getMissingState();
-        nrOfSites = data.getPatternCount();
+        nrOfSites = substitutionModel.getSiteCount();
 
         // Initialize likelihood core
-        int nrOfStates = substitutionModel.getStateCount();
-        probabilities = new double[nrOfStates * nrOfStates];
-        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, nrOfStates, nrOfSites, missingDataState);
+        int[] nrOfStates = substitutionModel.getNrOfStatesPerSite();    // Reference, not copy
+        probabilities = new double[nrOfSites][];
+        for (int i = 0; i < nrOfSites; i++) {
+            probabilities[i] = new double[nrOfStates[i] * nrOfStates[i]];
+        }
+        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, nrOfStates[0], nrOfSites, substitutionModel.getMissingStates()[0]);
 
         // Set initial states
         setStates(treeInput.get().getRoot());
@@ -164,8 +158,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         if (update != Tree.IS_CLEAN) {
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
             substitutionModel.getTransitionProbabilities(node, parentHeight, node.getHeight(), 
-                    branchRateModelInput.get().getRateForBranch(node), probabilities);
-            likelihoodCore.setNodeMatrix(nodeIndex, 0, probabilities);
+                    branchRateModelInput.get().getRateForBranch(node), probabilities[0]);   // TODO: fix to be sitewise
+            likelihoodCore.setNodeMatrix(nodeIndex, 0, probabilities[0]);   // TODO: fix to be sitewise
             update |= Tree.IS_DIRTY;
         }
 
