@@ -86,7 +86,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         for (int i = 0; i < nrOfSites; i++) {
             probabilities[i] = new double[nrOfStates[i] * nrOfStates[i]];
         }
-        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, nrOfStates[0], nrOfSites, substitutionModel.getMissingStates()[0]);
+        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, nrOfStates, nrOfSites, substitutionModel.getMissingStates());
 
         // Set initial states
         setStates(treeInput.get().getRoot());
@@ -157,9 +157,9 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         // Update transition probabilities if needed
         if (update != Tree.IS_CLEAN) {
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
-            substitutionModel.getTransitionProbabilities(node, parentHeight, node.getHeight(), 
-                    branchRateModelInput.get().getRateForBranch(node), probabilities[0]);   // TODO: fix to be sitewise
-            likelihoodCore.setNodeMatrix(nodeIndex, 0, probabilities[0]);   // TODO: fix to be sitewise
+            substitutionModel.getTransitionProbabilitiesAllSites(node, parentHeight, node.getHeight(), 
+                    branchRateModelInput.get().getRateForBranch(node), probabilities);
+            likelihoodCore.setNodeMatrices(nodeIndex, probabilities);
             update |= Tree.IS_DIRTY;
         }
 

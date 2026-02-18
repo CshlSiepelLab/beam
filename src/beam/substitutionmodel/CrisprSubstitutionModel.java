@@ -138,8 +138,11 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
                         "edit rates in the current implementation. Please use the global model structure.");
             }
             getProvidedEditRates();
+            return;
+        } else {
+            calculateDynamicEditRates();
         }
-        calculateDynamicEditRates();
+        validateAndSumEditRates();
     }
 
     private void getProvidedEditRates() {
@@ -173,7 +176,6 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             collectEmpiricalStateCountsGlobal();
             normalizeCountsGlobal();
         }
-        validateAndSumEditRates();
     }
 
     private void calculateDynamicEditRatesSitewise() {
@@ -186,7 +188,6 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             collectEmpiricalStateCountsSitewise();
             normalizeCountsSitewise();
         }
-        validateAndSumEditRates();
     }
 
     private void getMaxObservedStatesGlobal() {
@@ -389,34 +390,47 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
 
 
+    // Required from extension of SubstitutionMode.Base, but not used since the sitewise version is used below
     @Override
-    public void getTransitionProbabilities(Node node, double startTime, double endTime, double rate, double[] matrix) {
-        int site = 0; // TODO: Fix sitewise implementation
-        int nrOfStates = nrOfStatesPerSite[site];
+    public void getTransitionProbabilities(Node node, double startTime, double endTime, double rate, double[] matrix) {}
+    
 
-        // Calculate key parameters
+    public void getTransitionProbabilitiesAllSites(Node node, double startTime, double endTime, double rate, double[][] matrix) {
+        // Calculate key parameters that are assumed to be consistent across sites
         double silencingRate = silencingRate_.getValue();
         double delta = (startTime - endTime) * rate;
         double expOfDeltaLoss = Math.exp(-delta * silencingRate);
         double c = expOfDeltaLoss * (1 - Math.exp(-delta));
 
-        // Initialize matrix to zeros
-        Arrays.fill(matrix, 0.0);
-
-        // Set absorbing state (bottom right corner)
-        matrix[nrOfStates * nrOfStates - 1] = 1.0;
-
-        // Set diagonal elements and loss probabilities in one pass
-        for (int i = 0; i < nrOfStates - 1; i++) {
-            int rowOffset = i * nrOfStates;
-            matrix[rowOffset + i] = (i == 0) ? Math.exp(-delta * (1 + silencingRate)) : expOfDeltaLoss;
-            matrix[rowOffset + (nrOfStates - 1)] = 1 - expOfDeltaLoss;
+        int nrOfSitesToCalculate = nrOfSites;
+        if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
+            nrOfSitesToCalculate = 1;   // Only calculate the first site in the global model since other sites reference the same matrix
         }
 
-        // Set edit probabilities (first row)
-        for (int j = 1; j < nrOfStates - 1; j++) {
-            double editRate = editRates[site][j - 1];
-            matrix[j] = editRate * c;
+        for (int siteNum = 0; siteNum < nrOfSitesToCalculate; siteNum++) {
+            // Initialize matrix to zeros
+            Arrays.fill(matrix[siteNum], 0.0);
+            int nrOfStates = nrOfStatesPerSite[siteNum];
+            // Set absorbing state (bottom right corner)
+            matrix[siteNum][matrix[siteNum].length - 1] = 1.0;
+            // Set diagonal elements and loss probabilities in one pass
+            for (int i = 0; i < nrOfStates - 1; i++) {
+                int rowOffset = i * nrOfStates;
+                matrix[siteNum][rowOffset + i] = (i == 0) ? Math.exp(-delta * (1 + silencingRate)) : expOfDeltaLoss;
+                matrix[siteNum][rowOffset + (nrOfStates - 1)] = 1 - expOfDeltaLoss;
+            }
+            // Set edit probabilities (first row)
+            for (int j = 1; j < nrOfStates - 1; j++) {
+                double editRate = editRates[siteNum][j - 1];
+                matrix[siteNum][j] = editRate * c;
+            }
+        }
+
+        if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
+            // Reference the first site matrix for all other sites in the global model
+            for (int siteNum = 1; siteNum < nrOfSites; siteNum++) {
+                matrix[siteNum] = matrix[0];
+            }
         }
     }
 

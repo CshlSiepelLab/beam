@@ -18,100 +18,89 @@ import java.util.Set;
 public class IrreversibleLikelihoodCore extends LikelihoodCore {
 
     /** Number of states in the model */
-    protected int nrOfStates;
-
+    protected int[] nrOfStatesPerSite;
     /** Number of nodes in the tree */
     protected int nrOfNodes;
-
     /** Number of nodes excluding the origin node */
     protected int numNodesNoOrigin;
-
-    /** Number of patterns in the alignment */
-    protected int nrOfPatterns;
-
-    /** Size of the partials array */
-    protected int partialsSize;
-
-    /** Size of the transition matrix */
-    protected int matrixSize;
-
+    /** Number of sites in the alignment */
+    protected int nrOfSites;
+    /** Size of the partials array per site */
+    protected int[] partialsSizes;
+    /** Size of the transition matrix per site */
+    protected int[] matrixSizes;
     /** Partial likelihoods for each node */
-    protected double[][][] partials;
-
+    protected double[][][][] partials;
     /** Transition matrices for each node */
-    protected double[][][] matrices;
-
+    protected double[][][][] matrices;
     /** Current matrix indices for each node */
     protected int[] currentMatrixIndex;
-
     /** Stored matrix indices for each node */
     protected int[] storedMatrixIndex;
-
     /** Current partials indices for each node */
     protected int[] currentPartialsIndex;
-
     /** Stored partials indices for each node */
     protected int[] storedPartialsIndex;
-
-    /** Ancestral states for each node and pattern */
-    protected int[] ancestralStates;
-
-    /** Stored ancestral states for each node and pattern */
-    protected int[] storedAncestralStates;
-
-    /** All possible states */
-    private int[] allStates;
-
+    /** Ancestral states for each node and site */
+    protected int[][] ancestralStates;
+    /** Stored ancestral states for each node and site */
+    protected int[][] storedAncestralStates;
+    /** All possible states per site*/
+    private int[][] allStatesPerSite;
     /** State representing unedited sequence */
     private static final int[] UNEDITED_STATE = new int[]{0};
-
     /** Whether to use scaling for numerical stability */
     protected boolean useScaling = false;
-
-    /** Scaling factors for each node and pattern */
+    /** Scaling factors for each node and site */
     protected double[][][] scalingFactors;
-
     /** Threshold for scaling partials */
     private static final double SCALING_THRESHOLD = 1.0E-100;
-
     /** State representing missing data */
-    private int missingDataState;
+    private int[] missingDataStatePerSite;
 
     /**
      * Constructs a new IrreversibleLikelihoodCore with the specified parameters.
-     *
-     * @param nodeCount Number of nodes in the tree
-     * @param nrOfStates Number of states in the model
-     * @param patternCount Number of patterns in the alignment
-     * @param missingData State representing missing data
      */
-    public IrreversibleLikelihoodCore(int nodeCount, int nrOfStates, int patternCount, int missingData) {
-        this.nrOfStates = nrOfStates;
-        this.nrOfNodes = nodeCount;
-        this.nrOfPatterns = patternCount;
-        this.missingDataState = missingData;
-        this.matrixSize = nrOfStates * nrOfStates;
-        this.partialsSize = patternCount * nrOfStates;
-        this.numNodesNoOrigin = nodeCount - 1;
+    public IrreversibleLikelihoodCore(int nodeCount, int[] nrOfStates, int siteCount, int[] missingData) {
+        nrOfStatesPerSite = nrOfStates;
+        nrOfNodes = nodeCount;
+        numNodesNoOrigin = nrOfNodes - 1;
+        nrOfSites = siteCount;
+        missingDataStatePerSite = missingData;
 
-        // Initialize arrays
-        allStates = new int[nrOfStates];
-        for (int i = 0; i < nrOfStates; i++) {
-            allStates[i] = i;
+        scalingFactors = new double[2][nodeCount][nrOfSites];
+
+        matrixSizes = new int[nrOfSites];
+        partialsSizes = new int[nrOfSites];
+        for (int i = 0; i < siteCount; i++) {
+            matrixSizes[i] = nrOfStatesPerSite[i] * nrOfStatesPerSite[i];
+            partialsSizes[i] = nrOfStatesPerSite[i];
         }
-
-        partials = new double[2][nodeCount][partialsSize];
-        matrices = new double[2][nodeCount][matrixSize];
-        scalingFactors = new double[2][nodeCount][patternCount];
-        
+        partials = new double[2][nodeCount][nrOfSites][];
+        matrices = new double[2][nodeCount][nrOfSites][];
         // Initialize all arrays to 0
         for (int i = 0; i < nodeCount; i++) {
-            Arrays.fill(partials[0][i], 0.0);
-            Arrays.fill(partials[1][i], 0.0);
-            Arrays.fill(matrices[0][i], 0.0);
-            Arrays.fill(matrices[1][i], 0.0);
-            Arrays.fill(scalingFactors[0][i], 0.0);
-            Arrays.fill(scalingFactors[1][i], 0.0);
+            for (int j = 0; j < nrOfSites; j++) {
+                partials[0][i][j] = new double[partialsSizes[j]];
+                partials[1][i][j] = new double[partialsSizes[j]];
+                matrices[0][i][j] = new double[matrixSizes[j]];
+                matrices[1][i][j] = new double[matrixSizes[j]];
+                Arrays.fill(partials[0][i][j], 0.0);
+                Arrays.fill(partials[1][i][j], 0.0);
+                Arrays.fill(matrices[0][i][j], 0.0);
+                Arrays.fill(matrices[1][i][j], 0.0);
+                scalingFactors[0][i][j] = 0.0;
+                scalingFactors[1][i][j] = 0.0;
+            }
+        }
+
+        // Initialize arrays
+        allStatesPerSite = new int[nrOfSites][];
+        for (int i = 0; i < nrOfSites; i++) {
+            allStatesPerSite[i] = new int[nrOfStatesPerSite[i]];
+            for (int j = 0; j < nrOfStatesPerSite[i]; j++) {
+                allStatesPerSite[i][j] = j;
+            }
         }
 
         currentMatrixIndex = new int[nodeCount];
@@ -119,11 +108,13 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
         currentPartialsIndex = new int[nodeCount];
         storedPartialsIndex = new int[nodeCount];
 
-        ancestralStates = new int[numNodesNoOrigin * nrOfPatterns];
-        storedAncestralStates = new int[numNodesNoOrigin * nrOfPatterns];
-        for (int i = 0; i < numNodesNoOrigin * nrOfPatterns; i++) {
-            ancestralStates[i] = -1;
-            storedAncestralStates[i] = -1;
+        ancestralStates = new int[numNodesNoOrigin][nrOfSites];
+        storedAncestralStates = new int[numNodesNoOrigin][nrOfSites];
+        for (int i = 0; i < numNodesNoOrigin; i++) {
+            for (int j = 0; j < nrOfSites; j++) {
+                ancestralStates[i][j] = -1;
+                storedAncestralStates[i][j] = -1;
+            }
         }
     }
 
@@ -131,15 +122,14 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
      * Initializes the partials at a node with the known states.
      *
      * @param leafIndex Index of the leaf node
-     * @param states Array of states for each pattern
+     * @param states Array of states for each site
      */
     public void setNodePartials(int leafIndex, int[] states) {
-        for (int i = 0; i < nrOfPatterns; i++) {
+        for (int i = 0; i < nrOfSites; i++) {
             // Set the known state to 1.0 for tips
-            partials[currentPartialsIndex[leafIndex]][leafIndex][i * nrOfStates + states[i]] = 1.0;
-
+            partials[currentPartialsIndex[leafIndex]][leafIndex][i][states[i]] = 1.0;
             // Set the ancestral state for tips
-            ancestralStates[leafIndex * nrOfPatterns + i] = (states[i] != missingDataState) ? states[i] : -2;
+            ancestralStates[leafIndex][i] = (states[i] != missingDataStatePerSite[i]) ? states[i] : -2;
         }
     }
 
@@ -151,20 +141,19 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
      * @param parentIndex Index of the parent node
      */
     public void setPossibleAncestralStates(int childIndex1, int childIndex2, int parentIndex) {
-        for (int i = 0; i < nrOfPatterns; i++) {
-            final int parentIndexOffset = parentIndex * nrOfPatterns + i;
-            final int child1State = ancestralStates[childIndex1 * nrOfPatterns + i];
-            final int child2State = ancestralStates[childIndex2 * nrOfPatterns + i];
+        for (int i = 0; i < nrOfSites; i++) {
+            final int child1State = ancestralStates[childIndex1][i];
+            final int child2State = ancestralStates[childIndex2][i];
 
             if (child1State == 0 || child2State == 0 || 
                 (child1State > 0 && child2State > 0 && child1State != child2State)) {
-                ancestralStates[parentIndexOffset] = 0;
+                ancestralStates[parentIndex][i] = 0;
                 continue;
             } else if (child1State < 0 && child2State < 0) {
-                ancestralStates[parentIndexOffset] = -1;
+                ancestralStates[parentIndex][i] = -1;
                 continue;
             } else {
-                ancestralStates[parentIndexOffset] = child1State >= 0 ? child1State : child2State;
+                ancestralStates[parentIndex][i] = child1State >= 0 ? child1State : child2State;
             }
         }
     }
@@ -180,31 +169,29 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
     public void calculatePartials(int childIndex1, int childIndex2, int parentIndex) {
         currentPartialsIndex[parentIndex] = 1 - currentPartialsIndex[parentIndex];
         
-        final double[] partials1 = partials[currentPartialsIndex[childIndex1]][childIndex1];
-        final double[] matrices1 = matrices[currentMatrixIndex[childIndex1]][childIndex1];
-        final double[] partials2 = partials[currentPartialsIndex[childIndex2]][childIndex2];
-        final double[] matrices2 = matrices[currentMatrixIndex[childIndex2]][childIndex2];
-        final double[] partials3 = partials[currentPartialsIndex[parentIndex]][parentIndex];
+        final double[][] partials1 = partials[currentPartialsIndex[childIndex1]][childIndex1];
+        final double[][] matrices1 = matrices[currentMatrixIndex[childIndex1]][childIndex1];
+        final double[][] partials2 = partials[currentPartialsIndex[childIndex2]][childIndex2];
+        final double[][] matrices2 = matrices[currentMatrixIndex[childIndex2]][childIndex2];
+        final double[][] partials3 = partials[currentPartialsIndex[parentIndex]][parentIndex];
 
-        for (int k = 0; k < nrOfPatterns; k++) {
-            final int u = k * nrOfStates;
-            final int[] possibleStates = getPossibleStates(ancestralStates[parentIndex * nrOfPatterns + k]);
-            final int[] child1States = getPossibleStates(ancestralStates[childIndex1 * nrOfPatterns + k]);
-            final int[] child2States = getPossibleStates(ancestralStates[childIndex2 * nrOfPatterns + k]);
+        for (int k = 0; k < nrOfSites; k++) {
+            final int[] possibleStates = getPossibleStates(ancestralStates[parentIndex][k], k);
+            final int[] child1States = getPossibleStates(ancestralStates[childIndex1][k], k);
+            final int[] child2States = getPossibleStates(ancestralStates[childIndex2][k], k);
 
             // Calculate partials for all states
             for (int i : possibleStates) {
                 double sum1 = 0.0;
                 double sum2 = 0.0;
-                final int iOffset = i * nrOfStates;
-                
+                final int rowOffset = i * nrOfStatesPerSite[k];
                 for (int j : child1States) {
-                    sum1 += matrices1[iOffset + j] * partials1[u + j];
+                    sum1 += matrices1[k][rowOffset + j] * partials1[k][j];
                 }
                 for (int j : child2States) {
-                    sum2 += matrices2[iOffset + j] * partials2[u + j];
+                    sum2 += matrices2[k][rowOffset + j] * partials2[k][j];
                 }
-                partials3[u + i] = sum1 * sum2;
+                partials3[k][i] = sum1 * sum2;
             }
 
             if (useScaling) {
@@ -217,17 +204,18 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
      * Returns possible states for a given state.
      *
      * @param state The current state
+     * @param siteNum The site number
      * @return Array of possible states
      */
-    private int[] getPossibleStates(int state) {
+    private int[] getPossibleStates(int state, int siteNum) {
         return state == 0 ? UNEDITED_STATE :
                state > 0 ? new int[]{0, state} :
-               state == -2 ? new int[]{missingDataState} :
-               allStates;
+               state == -2 ? new int[]{missingDataStatePerSite[siteNum]} :
+               allStatesPerSite[siteNum];
     }
 
     /**
-     * Calculates partial likelihoods and pattern log likelihoods at the cell division origin node.
+     * Calculates partial likelihoods and site log likelihoods at the cell division origin node.
      * Since this is the start of the experiment, the origin is known to be in the unedited state,
      * so we can only calculate the partials for that state and set the other to 0 since they
      * will not be used by the frequencies anyways.
@@ -240,69 +228,66 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
         double logP = 0.0;
         currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
 
-        final double[] partials1 = partials[currentPartialsIndex[rootIndex]][rootIndex];
-        final double[] matrices1 = matrices[currentMatrixIndex[rootIndex]][rootIndex];
-        final double[] partials3 = partials[currentPartialsIndex[originIndex]][originIndex];
+        final double[][] partials1 = partials[currentPartialsIndex[rootIndex]][rootIndex];
+        final double[][] matrices1 = matrices[currentMatrixIndex[rootIndex]][rootIndex];
+        final double[][] partials3 = partials[currentPartialsIndex[originIndex]][originIndex];
 
-        for (int k = 0; k < nrOfPatterns; k++) {
-            final int offset = k * nrOfStates;
+        for (int k = 0; k < nrOfSites; k++) {
+            final int[] possibleStates = getPossibleStates(ancestralStates[rootIndex][k], k);
             double sum1 = 0.0;
-            final int[] possibleStates = getPossibleStates(ancestralStates[rootIndex * nrOfPatterns + k]);
 
             for (int j : possibleStates) {
-                sum1 += matrices1[j] * partials1[offset + j];
+                sum1 += matrices1[k][j] * partials1[k][j];
             }
-            partials3[offset] = sum1;
+            partials3[k][0] = sum1;
 
             if (useScaling) {
                 scalePartials(originIndex, k, new int[]{0});
-                logP += Math.log(partials3[offset]) + getLogScalingFactor(k);
+                logP += Math.log(partials3[k][0]) + getLogScalingFactor(k);
             } else {
-                logP += Math.log(partials3[offset]);
+                logP += Math.log(partials3[k][0]);
             }
         }
 
         return logP;
     }
 
-    @Override
-    public void setNodeMatrix(int nodeIndex, int matrixIndex, double[] matrix) {
+    public void setNodeMatrices(int nodeIndex, double[][] siteMatrices) {
         currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
-        System.arraycopy(matrix, 0, matrices[currentMatrixIndex[nodeIndex]][nodeIndex], 
-                matrixIndex * matrixSize, matrixSize);
+        for (int siteNum = 0; siteNum < nrOfSites; siteNum++) {
+            System.arraycopy(siteMatrices[siteNum], 0, 
+                            matrices[currentMatrixIndex[nodeIndex]][nodeIndex][siteNum], 0, 
+                            matrixSizes[siteNum]);
+        }
     }
 
     /**
      * Scales partials for numerical stability.
      *
      * @param nodeIndex Index of the node
-     * @param patternNum Pattern number
+     * @param siteNum Site number
      * @param possibleStates Array of possible states
      */
-    protected void scalePartials(int nodeIndex, int patternNum, int[] possibleStates) {
-        final int v = nrOfStates * patternNum;
-        final double[] nodePartials = partials[currentPartialsIndex[nodeIndex]][nodeIndex];
-        final double[] nodeScalingFactors = scalingFactors[currentPartialsIndex[nodeIndex]][nodeIndex];
-        
+    protected void scalePartials(int nodeIndex, int siteNum, int[] possibleStates) {
         // Find the maximum partial value for scaling
         double scaleFactor = 0.0;
         for (int j : possibleStates) {
-            scaleFactor = Math.max(scaleFactor, nodePartials[v + j]);
+            scaleFactor = Math.max(scaleFactor, partials[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum][j]);
         }
 
         // Scale partials if needed and set scaling factor
         if (scaleFactor < SCALING_THRESHOLD) {
             for (int j : possibleStates) {
-                nodePartials[v + j] /= scaleFactor;
+                partials[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum][j] /= scaleFactor;
             }
         }
-        nodeScalingFactors[patternNum] = scaleFactor < SCALING_THRESHOLD ? Math.log(scaleFactor) : 0.0;
+        scalingFactors[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum] = scaleFactor < SCALING_THRESHOLD ? Math.log(scaleFactor) : 0.0;
     }
 
     @Override
-    public double getLogScalingFactor(int patternIndex_) {    
+    public double getLogScalingFactor(int siteNum) {    
         return java.util.stream.IntStream.range(0, nrOfNodes)
-            .mapToDouble(i -> scalingFactors[currentPartialsIndex[i]][i][patternIndex_])
+            .mapToDouble(i -> scalingFactors[currentPartialsIndex[i]][i][siteNum])
             .sum();
     }
 
@@ -320,8 +305,10 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
         System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, nrOfNodes);
         System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, nrOfNodes);
 
-        for (int i = 0; i < numNodesNoOrigin * nrOfPatterns; i++) {
-            storedAncestralStates[i] = ancestralStates[i];
+        for (int i = 0; i < numNodesNoOrigin; i++) {
+            for (int j = 0; j < nrOfSites; j++) {
+                storedAncestralStates[i][j] = ancestralStates[i][j];
+            }
         }
     }
 
@@ -331,41 +318,28 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
         System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, nrOfNodes);
 
         if (storedAncestralStates == null) {
-            storedAncestralStates = new int[numNodesNoOrigin * nrOfPatterns];
-            for (int i = 0; i < numNodesNoOrigin * nrOfPatterns; i++) {
-                storedAncestralStates[i] = ancestralStates[i];
+            storedAncestralStates = new int[numNodesNoOrigin][nrOfSites];
+            for (int i = 0; i < numNodesNoOrigin; i++) {
+                for (int j = 0; j < nrOfSites; j++) {
+                    storedAncestralStates[i][j] = ancestralStates[i][j];
+                }
             }
         }
 
-        for (int i = 0; i < numNodesNoOrigin * nrOfPatterns; i++) {
-            ancestralStates[i] = storedAncestralStates[i];
+        for (int i = 0; i < numNodesNoOrigin; i++) {
+            for (int j = 0; j < nrOfSites; j++) {
+                ancestralStates[i][j] = storedAncestralStates[i][j];
+            }
         }
-    }
-
-    @Override
-    public void finalize() throws java.lang.Throwable {
-        nrOfNodes = 0;
-        nrOfPatterns = 0;
-        nrOfStates = 0;
-        numNodesNoOrigin = 0;
-        partialsSize = 0;
-        matrixSize = 0;
-        partials = null;
-        currentPartialsIndex = null;
-        storedPartialsIndex = null;
-        matrices = null;
-        currentMatrixIndex = null;
-        storedMatrixIndex = null;
-        scalingFactors = null;
-        ancestralStates = null;
-        storedAncestralStates = null;
-        allStates = null;
     }
 
     // Unused methods required by the interface
     @Override
-    public void initialize(int nodeCount, int patternCount, int matrixCount, 
+    public void initialize(int nodeCount, int siteCount, int matrixCount, 
             boolean integrateCategories, boolean useAmbiguities) {}
+    
+    @Override
+    public void finalize() throws java.lang.Throwable {}
 
     @Override
     public void createNodePartials(int nodeIndex) {}
@@ -378,7 +352,10 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
 
     @Override
     public void setNodePartialsForUpdate(int nodeIndex) {}
-    
+
+    @Override
+    public void setNodeMatrix(int nodeIndex, int matrixIndex, double[] matrix) {}
+
     @Override
     public void setNodeStates(int nodeIndex, int[] states) {}
     
