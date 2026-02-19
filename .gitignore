@@ -14,3 +14,6 @@ beast*
 
 # Ignore llm index file
 AGENTS.md
+
+# Ignore development file
+setup.sh

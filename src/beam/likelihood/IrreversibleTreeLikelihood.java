@@ -47,16 +47,11 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     protected CrisprSubstitutionModel substitutionModel;
     /* Number of sites in the alignment */
     protected int nrOfSites;
-    /* Transition probability matrix */
-    protected double[][] probabilities;
     /* Whether the substitution model is global */
     protected boolean isGlobalModel;
-    /*
-     * Flag indicating the state of the tree:
-     * CLEAN=0: nothing needs to be recalculated for the node</li>
-     * DIRTY=1: node partial needs to be recalculated</li>
-     * FILTHY=2: indices for the node need to be recalculated</li>
-     */
+    // Recalculation flags
+    private static final int IS_CLEAN = 0;
+    private static final int IS_DIRTY = 1;
     protected int hasDirt;
     /* Number of nodes in the tree */
     protected int nrOfNodes;
@@ -64,12 +59,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     protected int numNodesNoOrigin;
     /* Size of the partials array per site */
     protected int[] partialsSizes;
-    /* Size of the transition matrix per site */
-    protected int[] matrixSizes;
     /* Partial likelihoods for each node */
     protected double[][][][] partials;
-    /* Transition matrices for each node */
-    protected double[][][][] matrices;
     /* Current matrix indices for each node */
     protected int[] currentMatrixIndex;
     /* Stored matrix indices for each node */
@@ -96,6 +87,9 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     private int[] missingDataStatePerSite;
     // Number of state per site
     private int[] nrOfStatesPerSite;
+    // Array to hold the core transition probability values that are consistent across sites for the crispr models, to avoid calculating the full sparse matrix upfront
+    double[] coreTransitionValues = new double[4]; // 0: unedited to unedited (top left), 1: edited to same edited (diag), 2: any edit to missing data (last col), 3: unedited to any edited without editRate considered yet (first row)
+    double[][][] nodeCoreTransitionValues;
 
     public IrreversibleTreeLikelihood() {
         branchRateModelInput.setRule(Validate.REQUIRED);
@@ -108,42 +102,24 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         originHeight = originInput.get().getValue();
         nrOfSites = substitutionModel.getSiteCount();
         data = substitutionModel.getData(); // We use the data from the substitution model since the missing data state (-1) is replaced there during the rate matrix setup
-        nrOfStatesPerSite = substitutionModel.getNrOfStatesPerSite();    // Reference, not copy
-        isGlobalModel = substitutionModel.isGlobalModel();
-
-        // Initialize transition probability matrices per site
-        probabilities = new double[nrOfSites][];
-        for (int i = 0; i < nrOfSites; i++) {
-            probabilities[i] = new double[nrOfStatesPerSite[i] * nrOfStatesPerSite[i]];
-        }
+        nrOfStatesPerSite = substitutionModel.getNrOfStatesPerSite();
+        missingDataStatePerSite = substitutionModel.getMissingStates();
 
         // Initialize data structures for likelihood calculations
         numNodesNoOrigin = treeInput.get().getNodeCount();
         nrOfNodes = numNodesNoOrigin + 1; // +1 for origin node
-        missingDataStatePerSite = substitutionModel.getMissingStates();
-
-        matrixSizes = new int[nrOfSites];
+        nodeCoreTransitionValues = new double[2][nrOfNodes][4]; // First index is for store/restore swapping
         partialsSizes = new int[nrOfSites];
         for (int i = 0; i < nrOfSites; i++) {
-            matrixSizes[i] = nrOfStatesPerSite[i] * nrOfStatesPerSite[i];
             partialsSizes[i] = nrOfStatesPerSite[i];
         }
         partials = new double[2][nrOfNodes][nrOfSites][];
-        matrices = new double[2][nrOfNodes][nrOfSites][];
         logScalingFactorsSum = new double[2][nrOfSites];
         // Initialize all arrays to 0
         for (int i = 0; i < nrOfNodes; i++) {
             for (int j = 0; j < nrOfSites; j++) {
                 partials[0][i][j] = new double[partialsSizes[j]];
                 partials[1][i][j] = new double[partialsSizes[j]];
-                matrices[0][i][j] = new double[matrixSizes[j]];
-                matrices[1][i][j] = new double[matrixSizes[j]];
-                Arrays.fill(partials[0][i][j], 0.0);
-                Arrays.fill(partials[1][i][j], 0.0);
-                Arrays.fill(matrices[0][i][j], 0.0);
-                Arrays.fill(matrices[1][i][j], 0.0);
-                logScalingFactorsSum[0][j] = 0.0;
-                logScalingFactorsSum[1][j] = 0.0;
             }
         }
 
@@ -156,6 +132,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             }
         }
 
+        // Initialize indiced to 0
         currentMatrixIndex = new int[nrOfNodes];
         storedMatrixIndex = new int[nrOfNodes];
         currentPartialsIndex = new int[nrOfNodes];
@@ -221,33 +198,27 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
      */
     protected int traverse(Node node) {
         final int nodeIndex = node.getNr();
-        int update = (node.isDirty() | hasDirt);
+        int updateTransitionProbs = (node.isDirty() | hasDirt);
 
         // Update transition probabilities if needed
-        if (update != Tree.IS_CLEAN) {
+        if (updateTransitionProbs != IS_CLEAN) {
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
-            substitutionModel.getTransitionProbabilitiesAllSites(node, parentHeight, node.getHeight(), 
-                    branchRateModelInput.get().getRateForBranch(node), probabilities);
-            // Set node transition probability matrix for all sites
+            coreTransitionValues = substitutionModel.getCoreTransitionProbabilityValues(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node));
             currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
-            for (int siteNum = 0; siteNum < nrOfSites; siteNum++) {
-                System.arraycopy(probabilities[siteNum], 0, matrices[currentMatrixIndex[nodeIndex]][nodeIndex][siteNum],
-                    0, matrixSizes[siteNum]);
-            }
+            nodeCoreTransitionValues[currentMatrixIndex[nodeIndex]][nodeIndex] = Arrays.copyOf(coreTransitionValues, coreTransitionValues.length);
         }
 
         // Process internal nodes
         if (!node.isLeaf()) {
             Node child1 = node.getLeft();
             Node child2 = node.getRight();
-            int update1 = traverse(child1);
-            int update2 = traverse(child2);
+            int updateTransitionProbs1 = traverse(child1);
+            int updateTransitionProbs2 = traverse(child2);
 
             // Calculate partials if either child is dirty
-            if (update1 != Tree.IS_CLEAN || update2 != Tree.IS_CLEAN) {
+            if (updateTransitionProbs1 != IS_CLEAN || updateTransitionProbs2 != IS_CLEAN) {
                 int childIndex1 = child1.getNr();
                 int childIndex2 = child2.getNr();
-                
                 setPossibleAncestralStates(childIndex1, childIndex2, nodeIndex);
                 calculatePartials(childIndex1, childIndex2, nodeIndex);
 
@@ -256,11 +227,11 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
                     logP = calculateLogLikelihoods(nodeIndex, nodeIndex + 1);
                 }
 
-                update |= (update1 | update2);
+                updateTransitionProbs |= (updateTransitionProbs1 | updateTransitionProbs2);
             }
         }
 
-        return update;
+        return updateTransitionProbs;
     }
 
     public void setPossibleAncestralStates(int childIndex1, int childIndex2, int parentIndex) {
@@ -295,37 +266,55 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
      */
     public void calculatePartials(int childIndex1, int childIndex2, int parentIndex) {
         currentPartialsIndex[parentIndex] = 1 - currentPartialsIndex[parentIndex];
-        
-        final double[][] partials1 = partials[currentPartialsIndex[childIndex1]][childIndex1];
-        final double[][] matrices1 = matrices[currentMatrixIndex[childIndex1]][childIndex1];
-        final double[][] partials2 = partials[currentPartialsIndex[childIndex2]][childIndex2];
-        final double[][] matrices2 = matrices[currentMatrixIndex[childIndex2]][childIndex2];
-        final double[][] partials3 = partials[currentPartialsIndex[parentIndex]][parentIndex];
+        double[][] child1partials = partials[currentPartialsIndex[childIndex1]][childIndex1];
+        double[][] child2partials = partials[currentPartialsIndex[childIndex2]][childIndex2];
+        double[][] parentPartials = partials[currentPartialsIndex[parentIndex]][parentIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
-            final int[] possibleStates = getPossibleStates(ancestralStates[parentIndex][k], k);
-            final int[] child1States = getPossibleStates(ancestralStates[childIndex1][k], k);
-            final int[] child2States = getPossibleStates(ancestralStates[childIndex2][k], k);
+            int[] possibleParentStates = getPossibleStates(ancestralStates[parentIndex][k], k);
+            int[] child1States = getPossibleStates(ancestralStates[childIndex1][k], k);
+            int[] child2States = getPossibleStates(ancestralStates[childIndex2][k], k);
 
             // Calculate partials for all states
-            for (int i : possibleStates) {
+            for (int i : possibleParentStates) {
                 double sum1 = 0.0;
                 double sum2 = 0.0;
-                // Row is the starting parent state, columns are the target child states for the matrix
-                // Partials come from the children at the target child states
-                final int rowOffset = i * nrOfStatesPerSite[k];
                 for (int j : child1States) {
-                    sum1 += matrices1[k][rowOffset + j] * partials1[k][j];
+                    sum1 += getTransitionProbFromCoreValues(i, j, nodeCoreTransitionValues[currentMatrixIndex[childIndex1]][childIndex1], k) * child1partials[k][j];
                 }
                 for (int j : child2States) {
-                    sum2 += matrices2[k][rowOffset + j] * partials2[k][j];
+                    sum2 += getTransitionProbFromCoreValues(i, j, nodeCoreTransitionValues[currentMatrixIndex[childIndex2]][childIndex2], k) * child2partials[k][j];
                 }
-                partials3[k][i] = sum1 * sum2;
+                parentPartials[k][i] = sum1 * sum2;
             }
 
             if (useScaling) {
-                scalePartials(parentIndex, k, possibleStates);
+                scalePartials(parentIndex, k, possibleParentStates);
             }
+        }
+    }
+
+    public double getTransitionProbFromCoreValues(int parentState, int childState, double[] coreValues, int siteNum) {
+        /* Reminder of core values orderering in the array:
+        * 0: unedited to unedited (top left)
+        * 1: edited to same edited (diag)
+        * 2: any edit to missing data (last col)
+        * 3: unedited to any edited without editRate considered yet (first row)
+        */
+        if (parentState == 0 && childState == 0) {
+            return coreValues[0]; // unedited to unedited
+        } else if (parentState == missingDataStatePerSite[siteNum] && childState == missingDataStatePerSite[siteNum]) {
+            return 1.0; // Absorbing state once missing
+        } else if (childState == missingDataStatePerSite[siteNum]) {
+            return coreValues[2]; // Unedited or any edit to missing data
+        } else if (parentState > 0 && childState != parentState) {
+            return 0.0; // No transitions allowed when already edited, except to missing data state which is handled above
+        } else if (childState == parentState) {
+            return coreValues[1]; // Edit to the same edit, already accounting for the distinct [0][0] unedited to unedited case above
+        } else if (parentState == 0 && childState > 0) {
+            return coreValues[3] * substitutionModel.getEditRate(siteNum, childState); // unedited to any edited with editRate considered
+        } else {
+            throw new IllegalArgumentException("Invalid state combination: parentState=" + parentState + ", childState=" + childState);
         }
     }
 
@@ -338,16 +327,14 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         double logP = 0.0;
         currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
 
-        final double[][] partials1 = partials[currentPartialsIndex[rootIndex]][rootIndex];
-        final double[][] originBranchTransitionProbs = matrices[currentMatrixIndex[rootIndex]][rootIndex];
+        final double[][] rootPartials = partials[currentPartialsIndex[rootIndex]][rootIndex];
         final double[][] originPartials = partials[currentPartialsIndex[originIndex]][originIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
             final int[] possibleStates = getPossibleStates(ancestralStates[rootIndex][k], k);
             double sum1 = 0.0;
-
             for (int j : possibleStates) {
-                sum1 += originBranchTransitionProbs[k][j] * partials1[k][j];
+                sum1 += getTransitionProbFromCoreValues(0, j, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][j];
             }
             originPartials[k][0] = sum1;
 
@@ -425,20 +412,15 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
     @Override
     protected boolean requiresRecalculation() {
-        // Check site model first (most common case)
-        if (((SiteModel.Base) siteModelInput.get()).isDirtyCalculation()) {
-            hasDirt = Tree.IS_DIRTY;
+        // Recalculate all transition probabilities and partials if any rates have changed
+        if (((SiteModel.Base) siteModelInput.get()).isDirtyCalculation() ||
+            branchRateModelInput.get().isDirtyCalculation()) {
+            hasDirt = IS_DIRTY;
             return true;
         }
 
-        // Check branch rate model
-        if (branchRateModelInput.get().isDirtyCalculation()) {
-            hasDirt = Tree.IS_FILTHY;
-            return true;
-        }
-
-        // Check tree last (least common case)
-        hasDirt = Tree.IS_CLEAN;
+        // Check the tree last, and keep hasDirt as clean since recalculations will only need to be done node-wise
+        hasDirt = IS_CLEAN;
         return treeInput.get().somethingIsDirty();
     }
 }

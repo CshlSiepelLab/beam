@@ -19,6 +19,9 @@ Also, specification of which tissue is the primary tissue -->
     <userDataType id="tissueDatatype" spec="beam.datatype.TissueData" primaryTissue="LL"/>
 </data>
 
+<!-- Define the Crispr substitution model setup (global or sitewise) and how to calculate fixed edit rates (uniform or empirical) -->
+<substModel id="substModelCrispr" spec="beam.substitutionmodel.CrisprSubstitutionModel" modelStructure="sitewise" editRateCalculationMode="uniform" silencingRate="@silencingRate" data="@alignment"/>
+
 <!-- Length of the experiment (+0.0001 for numerical stability) in time units that the tree will be inferred in -->
 <parameter id="originTime" spec="parameter.RealParameter" estimate="false">54.0001</parameter>
 
@@ -101,7 +104,7 @@ of BEAST2. -->
                 
                 <distribution id="treeLikelihood" spec="beam.likelihood.IrreversibleTreeLikelihood" origin="@originTime" data="@alignment" tree="@tree">
                     <siteModel spec="SiteModel" id="siteModel" mutationRate="1" gammaCategoryCount="1">
-                        <substModel id="substModel" spec="beam.substitutionmodel.CrisprSubstitutionModel" silencingRate="@silencingRate" data="@alignment"/>
+                        <substModel idref="substModelCrispr"/>
                     </siteModel>
                     <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@crisprClockRate"/>
                 </distribution>

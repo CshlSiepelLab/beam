@@ -395,57 +395,20 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             }
         }
     }
-
-
-
-    // Required from extension of SubstitutionMode.Base, but not used since the sitewise version is used below
-    @Override
-    public void getTransitionProbabilities(Node node, double startTime, double endTime, double rate, double[] matrix) {}
     
 
-    public void getTransitionProbabilitiesAllSites(Node node, double startTime, double endTime, double rate, double[][] matrix) {
+    public double[] getCoreTransitionProbabilityValues(Node node, double startTime, double endTime, double rate) {
         // Calculate key parameters that are assumed to be consistent across sites
         double silencingRate = silencingRate_.getValue();
         double delta = (startTime - endTime) * rate;
         double expOfDeltaLoss = Math.exp(-delta * silencingRate);
-        double oneMinusExpOfDeltaLoss = 1.0 - expOfDeltaLoss;
-        double oneMinusExpDelta = 1.0 - Math.exp(-delta);
-        double expOfDeltaTimesOnePlusLoss = Math.exp(-delta * (1 + silencingRate));
 
-        int nrOfSitesToCalculate = nrOfSites;
-        if (is_global) {
-            nrOfSitesToCalculate = 1;   // Only calculate the first site in the global model since other sites reference the same matrix
-        }
-
-        for (int siteNum = 0; siteNum < nrOfSitesToCalculate; siteNum++) {
-            // Initialize matrix to zeros
-            Arrays.fill(matrix[siteNum], 0.0);
-            int nrOfStates = nrOfStatesPerSite[siteNum];
-            // Set absorbing state (bottom right corner)
-            matrix[siteNum][matrix[siteNum].length - 1] = 1.0;
-            // Set last column missing state
-            int missingDataStateIndex = missingDataStates[siteNum];
-            for (int i = 0; i < missingDataStateIndex; i++) {
-                matrix[siteNum][i * nrOfStates + missingDataStateIndex] = oneMinusExpOfDeltaLoss;
-            }
-            // Set the first row diagonal element for staying in the unedited state
-            matrix[siteNum][0] = expOfDeltaTimesOnePlusLoss;
-            // Set diagonal elements for staying in the same state
-            for (int i = 1; i < missingDataStateIndex; i++) {
-                matrix[siteNum][i * nrOfStates + i] = expOfDeltaLoss;
-            }
-            // Set first row edit probabilities
-            for (int j = 1; j < missingDataStateIndex; j++) {
-                matrix[siteNum][j] = editRates[siteNum][j - 1] * expOfDeltaLoss * oneMinusExpDelta;
-            }
-        }
-
-        if (is_global) {
-            // Reference the first site matrix for all other sites in the global model
-            for (int siteNum = 1; siteNum < nrOfSites; siteNum++) {
-                matrix[siteNum] = matrix[0];
-            }
-        }
+        double[] coreValues = new double[4];
+        coreValues[0] = Math.exp(-delta * (1.0 + silencingRate));  // Top left/first state, in the matrix; Prob of unedited -> unedited (0 to 0)
+        coreValues[1] = expOfDeltaLoss;             // Diagonal elements, except for first element in top row and last element in the final row; Prob of staying in the same edited state (i to i) from an edited starting state
+        coreValues[2] = 1.0 - expOfDeltaLoss;           // Last column except for the bottom right/final entry; Prob of transitioning to the missing data state (i to -1) from any i>=0 (unedited or edited states)
+        coreValues[3] = expOfDeltaLoss * (1.0 - Math.exp(-delta));           // First row edit probability scalar; Edit rate * scalar give the prob of editing from unedited to the specific edit state (0 to j) for j>0
+        return coreValues;
     }
 
     @Override
@@ -460,7 +423,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     }
 
     @Override
-    protected boolean requiresRecalculation() {
+    public boolean requiresRecalculation() {
         // Since edit rates are fixed hyperparameters, the only thing that can change is the silencing rate
         return silencingRate_.getValue() != storedSilencingRate;
     }
@@ -497,11 +460,11 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         return nrOfStatesPerSite;
     }
 
-    public boolean isGlobalModel() {
-        return is_global;
+    public double getEditRate(int site, int editIndex) {
+        return editRates[site][editIndex - 1];  // Edit index is 1-based for input but 0-base in the array
     }
 
-    public boolean isUniformEditRates() {
-        return is_uniform;
-    }
+    // Required, but not used
+    @Override
+    public void getTransitionProbabilities(Node node, double startTime, double endTime, double rate, double[] matrix) {}
 }
