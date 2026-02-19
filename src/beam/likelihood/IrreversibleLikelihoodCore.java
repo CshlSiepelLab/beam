@@ -129,7 +129,7 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
             // Set the known state to 1.0 for tips
             partials[currentPartialsIndex[leafIndex]][leafIndex][i][states[i]] = 1.0;
             // Set the ancestral state for tips
-            ancestralStates[leafIndex][i] = (states[i] != missingDataStatePerSite[i]) ? states[i] : -2;
+            ancestralStates[leafIndex][i] = (states[i] == missingDataStatePerSite[i]) ? -1 : states[i];
         }
     }
 
@@ -149,13 +149,24 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
                 (child1State > 0 && child2State > 0 && child1State != child2State)) {
                 ancestralStates[parentIndex][i] = 0;
                 continue;
-            } else if (child1State < 0 && child2State < 0) {
-                ancestralStates[parentIndex][i] = -1;
-                continue;
-            } else {
+            } else if (child1State > 0 || child2State > 0) {
                 ancestralStates[parentIndex][i] = child1State >= 0 ? child1State : child2State;
             }
+            // -1 initialization is the fallback here
         }
+    }
+
+    /**
+     * Returns possible states for a given state.
+     *
+     * @param state The current state
+     * @param siteNum The site number
+     * @return Array of possible states
+     */
+    private int[] getPossibleStates(int state, int siteNum) {
+        return state == 0 ? UNEDITED_STATE :
+               state > 0 ? new int[]{0, state} :
+               allStatesPerSite[siteNum];
     }
 
     /**
@@ -200,20 +211,6 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
                 scalePartials(parentIndex, k, possibleStates);
             }
         }
-    }
-
-    /**
-     * Returns possible states for a given state.
-     *
-     * @param state The current state
-     * @param siteNum The site number
-     * @return Array of possible states
-     */
-    private int[] getPossibleStates(int state, int siteNum) {
-        return state == 0 ? UNEDITED_STATE :
-               state > 0 ? new int[]{0, state} :
-               state == -2 ? new int[]{missingDataStatePerSite[siteNum]} :
-               allStatesPerSite[siteNum];
     }
 
     /**
