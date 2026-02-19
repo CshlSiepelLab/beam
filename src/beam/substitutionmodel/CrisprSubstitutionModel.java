@@ -67,6 +67,10 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     public int[] nrOfStatesPerSite;
     // Sitewise index for missing data state in the rate matrix
     private int[] missingDataStates;
+    // Save model structure input for easy access
+    private boolean is_global;
+    // Save edit rate calculation mode input for easy access
+    private boolean is_uniform;
 
     public CrisprSubstitutionModel() {
         // This model sets root frequencies internally (unedited state fixed to 1.0
@@ -83,6 +87,10 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         if (!EDIT_RATE_MODE_EMPIRICAL.equals(editRateCalculationModeInput.get()) && !EDIT_RATE_MODE_UNIFORM.equals(editRateCalculationModeInput.get())) {
             throw new RuntimeException("Invalid edit rate calculation mode: " + editRateCalculationModeInput.get() + ". Must be '" + EDIT_RATE_MODE_EMPIRICAL + "' or '" + EDIT_RATE_MODE_UNIFORM + "'.");
         }
+
+        // Store model setup based on inputs
+        is_global = MODEL_GLOBAL.equals(modelStructureInput.get());
+        is_uniform = EDIT_RATE_MODE_UNIFORM.equals(editRateCalculationModeInput.get());
 
         // Read in mutation data and remap mutations to be sequential
         data = dataInput.get();
@@ -122,7 +130,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     * This remapping can be done globally or sitewise.
     */
     public void reorderMutationsSequentially() {
-        if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
+        if (is_global) {
             reorderMutationsSequentiallyGlobal();
             return;
         }
@@ -133,7 +141,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         maxStates = new int[nrOfSites];
         editRates = new Double[nrOfSites][];
         if (!editRatesInput.get().isEmpty()) {
-            if (MODEL_SITEWISE.equals(modelStructureInput.get())) {
+            if (!is_global) {
                 throw new RuntimeException("Sitewise model structure is not compatible with provided " +
                         "edit rates in the current implementation. Please use the global model structure.");
             }
@@ -159,7 +167,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     }
 
     private void calculateDynamicEditRates() {
-        if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
+        if (is_global) {
             calculateDynamicEditRatesGlobal();
         } else {
             calculateDynamicEditRatesSitewise();
@@ -168,7 +176,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     private void calculateDynamicEditRatesGlobal() {
         getMaxObservedStatesGlobal();
-        if (EDIT_RATE_MODE_UNIFORM.equals(editRateCalculationModeInput.get())) {
+        if (is_uniform) {
             System.out.println("Using global uniform edit rates.");
             createUniformEditRates();
         } else {
@@ -180,7 +188,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     private void calculateDynamicEditRatesSitewise() {
         getMaxObservedStatesSitewise();
-        if (EDIT_RATE_MODE_UNIFORM.equals(editRateCalculationModeInput.get())) {
+        if (is_uniform) {
             System.out.println("Using sitewise uniform edit rates.");
             createUniformEditRates();
         } else {
@@ -289,7 +297,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             }
         }
         // Print edit rates for the user
-        if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
+        if (is_global) {
             System.out.println("Final edit rates (global model):");
             System.out.println(Arrays.toString(editRates[0]));
         } else {
@@ -405,7 +413,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         double expOfDeltaTimesOnePlusLoss = Math.exp(-delta * (1 + silencingRate));
 
         int nrOfSitesToCalculate = nrOfSites;
-        if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
+        if (is_global) {
             nrOfSitesToCalculate = 1;   // Only calculate the first site in the global model since other sites reference the same matrix
         }
 
@@ -432,7 +440,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             }
         }
 
-        if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
+        if (is_global) {
             // Reference the first site matrix for all other sites in the global model
             for (int siteNum = 1; siteNum < nrOfSites; siteNum++) {
                 matrix[siteNum] = matrix[0];
@@ -487,5 +495,13 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     public int[] getNrOfStatesPerSite() {
         return nrOfStatesPerSite;
+    }
+
+    public boolean isGlobalModel() {
+        return is_global;
+    }
+
+    public boolean isUniformEditRates() {
+        return is_uniform;
     }
 }

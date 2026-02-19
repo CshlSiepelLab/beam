@@ -6,6 +6,7 @@ import beast.base.evolution.likelihood.LikelihoodCore;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.List;
 
 /**
  * Contains methods to calculate the partial likelihoods by using a simplified pruning
@@ -57,11 +58,14 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
     private static final double SCALING_THRESHOLD = 1.0E-100;
     /** State representing missing data */
     private int[] missingDataStatePerSite;
+    /** Whether the substitution model is global */
+    private boolean isGlobalModel;
 
     /**
      * Constructs a new IrreversibleLikelihoodCore with the specified parameters.
      */
-    public IrreversibleLikelihoodCore(int nodeCount, int[] nrOfStates, int siteCount, int[] missingData) {
+    public IrreversibleLikelihoodCore(int nodeCount, int[] nrOfStates, int siteCount, int[] missingData, boolean isGlobal) {
+        isGlobalModel = isGlobal;
         nrOfStatesPerSite = nrOfStates;
         nrOfNodes = nodeCount;
         numNodesNoOrigin = nrOfNodes - 1;
@@ -122,14 +126,14 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
      * Initializes the partials at a node with the known states.
      *
      * @param leafIndex Index of the leaf node
-     * @param states Array of states for each site
+     * @param states List of states for each site
      */
-    public void setNodePartials(int leafIndex, int[] states) {
+    public void setNodePartials(int leafIndex, List<Integer> states) {
         for (int i = 0; i < nrOfSites; i++) {
             // Set the known state to 1.0 for tips
-            partials[currentPartialsIndex[leafIndex]][leafIndex][i][states[i]] = 1.0;
+            partials[currentPartialsIndex[leafIndex]][leafIndex][i][states.get(i)] = 1.0;
             // Set the ancestral state for tips
-            ancestralStates[leafIndex][i] = (states[i] == missingDataStatePerSite[i]) ? -1 : states[i];
+            ancestralStates[leafIndex][i] = (states.get(i) == missingDataStatePerSite[i]) ? -1 : states.get(i);
         }
     }
 

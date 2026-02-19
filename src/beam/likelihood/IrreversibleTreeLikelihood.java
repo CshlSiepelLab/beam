@@ -5,6 +5,7 @@ import java.util.List;
 
 import beast.base.core.Description;
 import beast.base.core.Input;
+import beast.base.core.Input.Validate;
 import beast.base.inference.CalculationNode;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.evolution.alignment.Alignment;
@@ -35,7 +36,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     /** Input for the origin time of the cell division process */
     public Input<RealParameter> originInput = new Input<>("origin",
             "Start of the cell division process, usually start of the experiment.",
-            Input.Validate.OPTIONAL);
+            Input.Validate.REQUIRED);
 
     /** Alignment data */
     protected Alignment data;
@@ -49,69 +50,50 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     protected double[][] probabilities;
     /** Core likelihood calculation engine */
     protected IrreversibleLikelihoodCore likelihoodCore;
-
+    /** Whether the substitution model is global */
+    protected boolean isGlobalModel;
     /**
      * Flag indicating the state of the tree:
-     * <ul>
-     *   <li>CLEAN=0: nothing needs to be recalculated for the node</li>
-     *   <li>DIRTY=1: node partial needs to be recalculated</li>
-     *   <li>FILTHY=2: indices for the node need to be recalculated</li>
-     * </ul>
+     * CLEAN=0: nothing needs to be recalculated for the node</li>
+     * DIRTY=1: node partial needs to be recalculated</li>
+     * FILTHY=2: indices for the node need to be recalculated</li>
      */
     protected int hasDirt;
 
+    public IrreversibleTreeLikelihood() {
+        branchRateModelInput.setRule(Validate.REQUIRED);
+        siteModelInput.setType(SiteModel.Base.class);
+    }
+
     @Override
     public void initAndValidate() {
-        // Get and validate inputs
         substitutionModel = (CrisprSubstitutionModel) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
-        data = substitutionModel.getData(); // We use the data from the substitution model since the missing data state (-1) is replaced there during the rate matrix setup
-
-        if (data.getTaxonCount() != treeInput.get().getLeafNodeCount()) {
-            throw new IllegalArgumentException("Number of taxa in alignment does not match number of leaves in tree");
-        }
-        if (originInput.get() == null || branchRateModelInput.get() == null) {
-            throw new IllegalArgumentException("Origin time and branch rate model must be specified");
-        }
-        if (!(siteModelInput.get() instanceof SiteModel.Base)) {
-            throw new IllegalArgumentException("Site model must be of type SiteModel.Base");
-        }
-
-        // Initialize model parameters
         originHeight = originInput.get().getValue();
         nrOfSites = substitutionModel.getSiteCount();
-
-        // Initialize likelihood core
+        data = substitutionModel.getData(); // We use the data from the substitution model since the missing data state (-1) is replaced there during the rate matrix setup
         int[] nrOfStates = substitutionModel.getNrOfStatesPerSite();    // Reference, not copy
+        isGlobalModel = substitutionModel.isGlobalModel();
+
+        // Initialize transition probability matrices per site
         probabilities = new double[nrOfSites][];
         for (int i = 0; i < nrOfSites; i++) {
             probabilities[i] = new double[nrOfStates[i] * nrOfStates[i]];
         }
-        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, nrOfStates, nrOfSites, substitutionModel.getMissingStates());
+
+        // Initialize likelihood core
+        likelihoodCore = new IrreversibleLikelihoodCore(treeInput.get().getNodeCount() + 1, 
+                    nrOfStates, nrOfSites, substitutionModel.getMissingStates(), isGlobalModel);
 
         // Set initial states
         setStates(treeInput.get().getRoot());
     }
 
-    /**
-     * Sets the data at the tips in the likelihood core.
-     *
-     * @param node The node to process
-     */
+    // Sets the observed data in likelihood core for leaf nodes across all alignment sites
     protected void setStates(Node node) {
         if (node.isLeaf()) {
             int taxonIndex = data.getTaxonIndex(node.getID());
-            if (taxonIndex == -1) {
-                throw new RuntimeException("Could not find sequence " + node.getID() + " in the alignment");
-            }
-
-            // Get states directly without intermediate array
-            List<Integer> seq = data.getCounts().get(taxonIndex);
-            int[] states = new int[nrOfSites];
-            for (int i = 0; i < nrOfSites; i++) {
-                int state = seq.get(i);
-                states[i] = state;
-            }
-            likelihoodCore.setNodePartials(node.getNr(), states);
+            if (taxonIndex == -1) throw new RuntimeException("Could not find sequence " + node.getID() + " in the alignment");
+            likelihoodCore.setNodePartials(node.getNr(), data.getCounts().get(taxonIndex)); // Pass data as reference
         } else {
             setStates(node.getLeft());
             setStates(node.getRight());
@@ -121,12 +103,10 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     @Override
     public double calculateLogP() {
         Node root = treeInput.get().getRoot();
-        
         // Return -infinity if tree exceeds origin time
         if (root.getHeight() >= originHeight) {
             return Double.NEGATIVE_INFINITY;
         }
-
         // Calculate likelihood with optional scaling
         traverse(root);
         if (logP == Double.NEGATIVE_INFINITY) {
@@ -136,19 +116,15 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
             }
         }
-
         return logP;
     }
 
     /**
-     * Computes the transition pre-order, then does a post-order traversal
+     * Computes the transition probabilities pre-order, then does a post-order traversal
      * calculating the partial likelihoods by a modified pruning algorithm
      * taking advantage of the irreversibility of the substitution model
      * to reduce the number of ancestral states to propagate partial
      * likelihoods for.
-     *
-     * @param node The node to traverse
-     * @return The update status of the node
      */
     protected int traverse(Node node) {
         final int nodeIndex = node.getNr();
@@ -160,7 +136,6 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             substitutionModel.getTransitionProbabilitiesAllSites(node, parentHeight, node.getHeight(), 
                     branchRateModelInput.get().getRateForBranch(node), probabilities);
             likelihoodCore.setNodeMatrices(nodeIndex, probabilities);
-            update |= Tree.IS_DIRTY;
         }
 
         // Process internal nodes
