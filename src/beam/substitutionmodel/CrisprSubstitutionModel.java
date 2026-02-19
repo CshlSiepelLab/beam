@@ -102,7 +102,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         initializeEditRates();
         nrOfStatesPerSite = new int[nrOfSites];
         for (int i = 0; i < nrOfSites; i++) {
-            nrOfStatesPerSite[i] = editRates[i].length + 2;  // Number of states is number of edits + unedited state (0) + missing data state (-1)
+            nrOfStatesPerSite[i] = maxStates[i] + 2;  // Number of states is number of edits + unedited state (0) + missing data state (-1)
         }
 
         // Silencing rate is independent of edit rates, so set it up seperately
@@ -206,6 +206,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
                 maxStates[0] = Math.max(maxStates[0], value);
             }
         }
+        if (maxStates[0] <= 0) throw new RuntimeException("No edits observed in the data! Cannot calculate edit rates. Please check your input data.");
         // Other sites can just be copies of the same max state since we are using the global model
         for (int i = 1; i < nrOfSites; i++) {
             maxStates[i] = maxStates[0];
@@ -239,6 +240,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     private void collectEmpiricalStateCountsSitewise() {
         for (int i = 0; i < nrOfSites; i++) {
+            if (maxStates[i] <= 0) continue;  // No edits observed at this site, so leave edit rates empty since they will never be used
             editRates[i] = new Double[maxStates[i]];
             Arrays.fill(editRates[i], 0.0);
             for (int taxon = 0; taxon < taxonCount; taxon++) {
@@ -251,9 +253,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     private void createUniformEditRates() {
         for (int i = 0; i < nrOfSites; i++) {
-            if (maxStates[i] <= 0) {
-                throw new RuntimeException("No edited states were found in the data for site " + (i + 1) + ".");
-            }
+            if (maxStates[i] <= 0) continue;  // No edits observed at this site, so leave edit rates empty since they will never be used
             editRates[i] = new Double[maxStates[i]];
             Arrays.fill(editRates[i], 1.0 / maxStates[i]);
         }
@@ -273,6 +273,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private void normalizeCountsSitewise() {
         // Normalize all sites independently since we are using the sitewise model
         for (int i = 0; i < nrOfSites; i++) {
+            if (maxStates[i] <= 0) continue;  // No edits observed at this site, so skip normalization since edit rates will never be used
             double total = 0.0;
             for (int j = 0; j < maxStates[i]; j++) {
                 total += editRates[i][j];
@@ -285,6 +286,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     private void validateAndSumEditRates() {
         for (int i = 0; i < nrOfSites; i++) {
+            if (maxStates[i] <= 0) continue;  // No edits observed at this site, so skip validation since edit rates will never be used
             double sum = 0.0;
             for (double editRate : editRates[i]) {
                 if (editRate < 0) {
@@ -303,6 +305,10 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         } else {
             System.out.println("Final edit rates (sitewise model):");
             for (int i = 0; i < nrOfSites; i++) {
+                if (maxStates[i] <= 0) {
+                    System.out.println("  Site " + (i + 1) + ": No edits observed, so no edit rates.");
+                    continue; // No edits observed at this site, so do not print the array
+                }
                 System.out.println("  Site " + (i + 1) + ": ");
                 System.out.println(Arrays.toString(editRates[i]));
             }
