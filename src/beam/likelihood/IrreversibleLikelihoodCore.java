@@ -184,6 +184,8 @@ public class IrreversibleLikelihoodCore extends LikelihoodCore {
             for (int i : possibleStates) {
                 double sum1 = 0.0;
                 double sum2 = 0.0;
+                // Row is the starting parent state, columns are the target child states for the matrix
+                // Partials come from the children at the target child states
                 final int rowOffset = i * nrOfStatesPerSite[k];
                 for (int j : child1States) {
                     sum1 += matrices1[k][rowOffset + j] * partials1[k][j];

@@ -400,7 +400,9 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         double silencingRate = silencingRate_.getValue();
         double delta = (startTime - endTime) * rate;
         double expOfDeltaLoss = Math.exp(-delta * silencingRate);
-        double c = expOfDeltaLoss * (1 - Math.exp(-delta));
+        double oneMinusExpOfDeltaLoss = 1.0 - expOfDeltaLoss;
+        double oneMinusExpDelta = 1.0 - Math.exp(-delta);
+        double expOfDeltaTimesOnePlusLoss = Math.exp(-delta * (1 + silencingRate));
 
         int nrOfSitesToCalculate = nrOfSites;
         if (MODEL_GLOBAL.equals(modelStructureInput.get())) {
@@ -413,16 +415,20 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             int nrOfStates = nrOfStatesPerSite[siteNum];
             // Set absorbing state (bottom right corner)
             matrix[siteNum][matrix[siteNum].length - 1] = 1.0;
-            // Set diagonal elements and loss probabilities in one pass
-            for (int i = 0; i < nrOfStates - 1; i++) {
-                int rowOffset = i * nrOfStates;
-                matrix[siteNum][rowOffset + i] = (i == 0) ? Math.exp(-delta * (1 + silencingRate)) : expOfDeltaLoss;
-                matrix[siteNum][rowOffset + (nrOfStates - 1)] = 1 - expOfDeltaLoss;
+            // Set last column missing state
+            int missingDataStateIndex = missingDataStates[siteNum];
+            for (int i = 0; i < missingDataStateIndex; i++) {
+                matrix[siteNum][i * nrOfStates + missingDataStateIndex] = oneMinusExpOfDeltaLoss;
             }
-            // Set edit probabilities (first row)
-            for (int j = 1; j < nrOfStates - 1; j++) {
-                double editRate = editRates[siteNum][j - 1];
-                matrix[siteNum][j] = editRate * c;
+            // Set the first row diagonal element for staying in the unedited state
+            matrix[siteNum][0] = expOfDeltaTimesOnePlusLoss;
+            // Set diagonal elements for staying in the same state
+            for (int i = 1; i < missingDataStateIndex; i++) {
+                matrix[siteNum][i * nrOfStates + i] = expOfDeltaLoss;
+            }
+            // Set first row edit probabilities
+            for (int j = 1; j < missingDataStateIndex; j++) {
+                matrix[siteNum][j] = editRates[siteNum][j - 1] * expOfDeltaLoss * oneMinusExpDelta;
             }
         }
 
