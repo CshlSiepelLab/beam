@@ -261,8 +261,9 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
                 continue;
             } else if (child1State > 0 || child2State > 0) {
                 ancestralStates[parentIndex][i] = child1State >= 0 ? child1State : child2State;
+            } else {
+                ancestralStates[parentIndex][i] = -1; // All states possible
             }
-            // The -1 initialization is the fallback here, which indicates consideration of all possible states for that site
         }
     }
 
