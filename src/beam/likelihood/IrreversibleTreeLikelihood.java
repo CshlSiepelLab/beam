@@ -117,16 +117,17 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         for (int i = 0; i < nrOfSites; i++) {
             partialsSizes[i] = nrOfStatesPerSite[i];
         }
-        partials = new double[2][nrOfNodes][nrOfSites][];
-        logScalingFactorsSums = new double[nrOfSites];
-        numScalingAttempts = 0;
+        partials = new double[2][numNodesNoOrigin][nrOfSites][];
         // Initialize all arrays to 0
-        for (int i = 0; i < nrOfNodes; i++) {
+        for (int i = 0; i < numNodesNoOrigin; i++) {
             for (int j = 0; j < nrOfSites; j++) {
                 partials[0][i][j] = new double[partialsSizes[j]];
                 partials[1][i][j] = new double[partialsSizes[j]];
             }
         }
+
+        logScalingFactorsSums = new double[nrOfSites];
+        numScalingAttempts = 0;
 
         // Initialize arrays
         allStatesPerSite = new int[nrOfSites][];
@@ -137,11 +138,11 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             }
         }
 
-        // Initialize indiced to 0
+        // Initialize indices to 0
         currentMatrixIndex = new int[nrOfNodes];
         storedMatrixIndex = new int[nrOfNodes];
-        currentPartialsIndex = new int[nrOfNodes];
-        storedPartialsIndex = new int[nrOfNodes];
+        currentPartialsIndex = new int[numNodesNoOrigin];
+        storedPartialsIndex = new int[numNodesNoOrigin];
 
         ancestralStates = new int[numNodesNoOrigin][nrOfSites];
         storedAncestralStates = new int[numNodesNoOrigin][nrOfSites];
@@ -345,10 +346,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
      */
     public double calculateLogLikelihoods(int rootIndex, int originIndex) {
         double logP = 0.0;
-        currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
 
         final double[][] rootPartials = partials[currentPartialsIndex[rootIndex]][rootIndex];
-        final double[][] originPartials = partials[currentPartialsIndex[originIndex]][originIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
             final int[] possibleStates = getPossibleStates(ancestralStates[rootIndex][k], k);
@@ -356,13 +355,12 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             for (int j : possibleStates) {
                 sum1 += getTransitionProbFromCoreValues(0, j, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][j];
             }
-            originPartials[k][0] = sum1;
 
             if (useScaling) {
                 scalePartials(originIndex, k, new int[]{0});
-                logP += Math.log(originPartials[k][0]) + logScalingFactorsSums[k];
+                logP += Math.log(sum1) + logScalingFactorsSums[k];
             } else {
-                logP += Math.log(originPartials[k][0]);
+                logP += Math.log(sum1);
             }
         }
 
@@ -403,7 +401,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
         // Store likelihood core components
         System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, nrOfNodes);
-        System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, nrOfNodes);
+        System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, numNodesNoOrigin);
 
         for (int i = 0; i < numNodesNoOrigin; i++) {
             for (int j = 0; j < nrOfSites; j++) {
@@ -418,7 +416,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         
         // Restore likelihood core components
         System.arraycopy(storedMatrixIndex, 0, currentMatrixIndex, 0, nrOfNodes);
-        System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, nrOfNodes);
+        System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, numNodesNoOrigin);
 
         if (storedAncestralStates == null) {
             storedAncestralStates = new int[numNodesNoOrigin][nrOfSites];
