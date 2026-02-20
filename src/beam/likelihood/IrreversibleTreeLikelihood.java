@@ -291,6 +291,9 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             int[] child1States = getPossibleStates(ancestralStates[childIndex1][k], k);
             int[] child2States = getPossibleStates(ancestralStates[childIndex2][k], k);
 
+            // Need to reset partials
+            Arrays.fill(parentPartials[k], 0.0);
+
             // Calculate partials for all states
             for (int i : possibleParentStates) {
                 double sum1 = 0.0;
@@ -377,8 +380,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             for (int j : possibleStates) {
                 partials[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum][j] /= scaleFactor;
             }
+            logScalingFactorsSums[siteNum] += Math.log(scaleFactor);
         }
-        logScalingFactorsSums[siteNum] += scaleFactor < SCALING_THRESHOLD ? Math.log(scaleFactor) : 0.0;
     }
 
     public void resetScalingFactors() {

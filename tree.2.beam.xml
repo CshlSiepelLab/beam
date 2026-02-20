@@ -1,0 +1,127 @@
+<beast beautitemplate='MultiTypeBirthDeath' beautistatus='' namespace="beast.base.evolution.alignment:beast.base.inference:beast.base.evolution.operator:beast.base.inference.operator:beast.base.evolution.sitemodel" required="BEAST.base" version="2.7">
+
+<!-- Class name shortcuts -->
+<map name="Uniform" >beast.base.inference.distribution.Uniform</map>
+<map name="Exponential" >beast.base.inference.distribution.Exponential</map>
+<map name="prior" >beast.base.inference.distribution.Prior</map>
+
+
+<!-- Start user inputs -->
+<!-- Path to barcode editing data in TSV matrix format with sites as columns.
+Integer representations for barcode edits must increase sequentially starting
+from 1 ... going left to right across rows starting from the first taxa row. 0 represents
+the unedited state and missing data entries must be encoded as -1. -->
+<data id="alignment" spec="beam.fileio.AlignmentFromXSV" fileName="$(barcodeMatrix)">
+    <userDataType spec="beam.datatype.EditData"/>
+</data>
+
+<!-- Length of the experiment (+0.0001 for numerical stability) in time units that the tree will be inferred in -->
+<parameter id="originTime" spec="parameter.RealParameter" estimate="false">54.0001</parameter>
+
+<!-- NOTE: Users will also need to update the starting newick string below.
+Other changes to parameters below should not be necessary for a basic run, 
+but they can be made to improve the starting point for MCMC or change priors to
+better match biological expectations. This may require a general understanding
+of BEAST2. -->
+<!-- End user inputs -->
+
+
+<run id="mcmc" spec="MCMC" chainLength="$(mcmcLength)">
+        <state id="state" spec="State" storeEvery="10000">
+            <stateNode id="tree" spec="beam.tree.StartingTreeFromNewick" taxa="@alignment" origin="@originTime" IsLabelledNewick="true" newickFile="$(startingNewickFile)">
+                <taxonset id="taxonset" spec="TaxonSet" alignment="@alignment"/>
+            </stateNode>
+            <parameter id="silencingRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="1000">0.1</parameter>
+            <parameter id="clockRate.c" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
+            <parameter id="birthDiffRate" spec="parameter.RealParameter" lower="1e-12" name="stateNode">0.005</parameter>
+            <parameter id="relativeDeathRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="0.999999">0.25</parameter>
+        </state>
+        
+        
+        <distribution id="posterior" spec="CompoundDistribution">
+            
+            <distribution id="prior" spec="CompoundDistribution">
+
+                <distribution id="birthDeath" spec="beast.base.evolution.speciation.BirthDeathGernhard08Model" 
+                    tree="@tree" originHeight="@originTime" birthDiffRate="@birthDiffRate" relativeDeathRate="@relativeDeathRate"/>
+
+                <prior id="silencingRatePrior" name="distribution" x="@silencingRate">
+                    <Exponential name="distr">
+                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
+                    </Exponential>
+                </prior>
+
+                <prior id="ClockPrior.c" name="distribution" x="@clockRate.c">
+                    <Exponential name="distr">
+                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
+                    </Exponential>
+                </prior>
+
+                <prior id="birthDiffRatePrior" name="distribution" x="@birthDiffRate">
+                    <Exponential name="distr">
+                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">1.0</parameter>
+                    </Exponential>
+                </prior>
+
+                <prior id="relativeDeathRatePrior" name="distribution" x="@relativeDeathRate">
+                    <Uniform name="distr" lower="0" upper="0.999999"/>
+                </prior>
+
+            </distribution>
+            
+            
+            <distribution id="likelihood" spec="CompoundDistribution" useThreads="true">
+                
+                <distribution id="treeLikelihood" spec="beam.likelihood.IrreversibleTreeLikelihood" origin="@originTime" data="@alignment" tree="@tree">
+                    <siteModel spec="SiteModel" id="siteModel" mutationRate="1" gammaCategoryCount="1">
+                        <substModel id="substModel" spec="beam.substitutionmodel.CrisprSubstitutionModel" modelStructure="global" editRateCalculationMode="uniform" silencingRate="@silencingRate" data="@alignment"/>
+                    </siteModel>
+                    <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@clockRate.c"/>
+                </distribution>
+                                
+            </distribution>
+
+        </distribution>
+
+    <!-- Operators defining what proposals are made during MCMC iterations -->
+    <!-- Tree topology moves -->
+    <operator id="exchangeNarrow" spec="Exchange" isNarrow="true" tree="@tree" weight="15"/>
+    <operator id="exchangeWide" spec="Exchange" isNarrow="false" tree="@tree" weight="3"/>
+    <operator id="wilsonBalding" spec="WilsonBalding" tree="@tree" weight="1"/>
+    <!-- Branch-length / node-height moves -->
+    <operator id="uniform" spec="Uniform" tree="@tree" weight="10"/>
+    <operator id="subtreeSlide" spec="SubtreeSlide" tree="@tree" weight="10"/>
+    <operator id="subtreeSlideLarge" spec="SubtreeSlide" tree="@tree" size="15" weight="3"/>
+    <!-- Operators on barcode editing parameters-->
+    <operator id="clockRateScaler" spec="ScaleOperator" parameter="@clockRate.c" scaleFactor="0.8" weight="3"/>
+    <operator id="silencingRateScaler" spec="ScaleOperator" parameter="@silencingRate" scaleFactor="0.8" weight="3"/>
+    <!-- Operators on phylodynamic prior parameters -->
+    <operator id="birthDiffRateScaler" spec="ScaleOperator" parameter="@birthDiffRate" scaleFactor="0.8" weight="3"/>
+    <operator id="relativeDeathRateScaler" spec="ScaleOperator" parameter="@relativeDeathRate" scaleFactor="0.8" weight="3"/>
+
+    <!-- Loggers -->
+        <logger id="tracelog" spec="Logger" fileName="$(outfileLog)" logEvery="$(sampleFreq)" model="@posterior" sanitiseHeaders="true" sort="smart">
+            <log idref="posterior"/>
+            <log idref="likelihood"/>
+            <log idref="prior"/>
+            <log id="treeHeight" spec="beast.base.evolution.tree.TreeHeightLogger" tree="@tree"/>
+            <log idref="silencingRate" />
+            <log idref="clockRate.c"/>
+            <log idref="treeLikelihood"/>
+            <log idref="birthDiffRate"/>
+            <log idref="relativeDeathRate"/>
+        </logger>
+
+        <logger id="screenlog" spec="Logger" logEvery="$(sampleFreq)">
+            <log idref="posterior"/>
+            <log idref="likelihood"/>
+            <log spec="util.ESS" arg="@posterior"/>
+        </logger>
+
+        <logger id="treelog" spec="Logger" fileName="$(outfileTrees)" logEvery="$(sampleFreq)" mode="tree">
+            <log id="TreeLogger" spec="beast.base.evolution.TreeWithMetaDataLogger" tree="@tree"/>
+        </logger>
+
+    <operatorschedule id="OperatorSchedule" spec="kernel.BactrianOperatorSchedule"/>
+</run>
+</beast>
