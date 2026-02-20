@@ -8,9 +8,9 @@
     <property name="lib" location="lib"/>
 
     <!-- Location to check for local copy of beast2 repository -->
-    <property name="local-beast-source-root" location="./beast-source"/>
-    <property name="local-beastfx-source-root" location="./beastfx-source"/>
-    <property name="local-beast-classic-root" location="./beast-classic-source"/>
+    <property name="local-beast-source-root" location="./beast"/>
+    <property name="local-beastfx-source-root" location="./beastfx"/>
+    <property name="local-beast-classic-root" location="./beast-classic"/>
 
     <!-- BEAST 2 currently uses Java 1.8 -->
     <property name="releaseVersion" value="17"/>
@@ -109,7 +109,6 @@
                 <fileset dir="${beast-source-root}/lib" includes="**/*.jar"/>
             </classpath>
         </javac>
-
     </target>
 
     <target name="find-beastfx" depends="init">
@@ -306,6 +305,16 @@
         <echo/>
         <echo/>
         <echo>** Jar archive ${dist}/${fullName}-jarsOnly.zip created successfully! **</echo>
+    </target>
+
+    <!-- Useful for testing with a local beast jar with modifications made -->
+    <target name="local-beast-executable" depends="build-beast,build-beastfx">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/beast.jar" basedir="${build-beast}"/>
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/beastfx.jar" basedir="${build-beastfx}"/>
+        <!-- The locally modified BEAST run can then be executed with the following command instead of the usual beast executable:
+             java -cp "dist/beast.jar:dist/beastfx.jar:beast-source/lib/*:$JAVA_FX_HOME/*" beastfx.app.beast.BeastMain -->
     </target>
 
 
