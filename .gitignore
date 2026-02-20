@@ -17,3 +17,5 @@ AGENTS.md
 
 # Ignore development file
 setup.sh
+tree.*
+term.*
