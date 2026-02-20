@@ -48,6 +48,9 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     public final Input<String> modelStructureInput = new Input<>("modelStructure", "Whether to use one rate matrix " +
             "for all sites (global) or a separate rate matrix for each site (sitewise). Default is global.", "global", 
             Validate.OPTIONAL);
+    // Whether to print edit rate details out during initialiation
+    public final Input<Boolean> printRates = new Input<>("printRates", "Whether to print " +
+            "details about the intialization of edit rates. Default is false.", false, Validate.OPTIONAL);
 
     // Store a copy of data, since missing state will be replaced
     private Alignment data;
@@ -71,6 +74,8 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private boolean is_global;
     // Save edit rate calculation mode input for easy access
     private boolean is_uniform;
+    // Whether to print edit rate details out during initialiation
+    private boolean printRates_;
 
     public CrisprSubstitutionModel() {
         // This model sets root frequencies internally (unedited state fixed to 1.0
@@ -91,11 +96,12 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         // Store model setup based on inputs
         is_global = MODEL_GLOBAL.equals(modelStructureInput.get());
         is_uniform = EDIT_RATE_MODE_UNIFORM.equals(editRateCalculationModeInput.get());
+        printRates_ = printRates.get();
 
         // Read in mutation data and remap mutations to be sequential
         data = dataInput.get();
         taxonCount = data.getTaxonCount();
-        nrOfSites = data.getPatternCount();
+        nrOfSites = data.getSiteCount(); // Using all sites, not just unique patterns here
         reorderMutationsSequentially();
 
         // Setup the edit rates, either from input or calculated from the data
@@ -154,7 +160,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     }
 
     private void getProvidedEditRates() {
-        System.out.println("Using provided edit rates.");
+        if (printRates_) System.out.println("Using provided edit rates.");
         RealParameter editRate_ = editRatesInput.get().get(0);
         editRates[0] = new Double[editRate_.getDimension()];
         for (int i = 0; i < editRate_.getDimension(); i++) {
@@ -177,10 +183,10 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private void calculateDynamicEditRatesGlobal() {
         getMaxObservedStatesGlobal();
         if (is_uniform) {
-            System.out.println("Using global uniform edit rates.");
+            if (printRates_) System.out.println("Using global uniform edit rates.");
             createUniformEditRates();
         } else {
-            System.out.println("Calculating empirical frequency edit rates from data (global model).");
+            if (printRates_) System.out.println("Calculating empirical frequency edit rates from data (global model).");
             collectEmpiricalStateCountsGlobal();
             normalizeCountsGlobal();
         }
@@ -189,10 +195,10 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private void calculateDynamicEditRatesSitewise() {
         getMaxObservedStatesSitewise();
         if (is_uniform) {
-            System.out.println("Using sitewise uniform edit rates.");
+            if (printRates_) System.out.println("Using sitewise uniform edit rates.");
             createUniformEditRates();
         } else {
-            System.out.println("Calculating empirical frequency edit rates from data (sitewise model).");
+            if (printRates_) System.out.println("Calculating empirical frequency edit rates from data (sitewise model).");
             collectEmpiricalStateCountsSitewise();
             normalizeCountsSitewise();
         }
@@ -298,19 +304,22 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
                 throw new RuntimeException("Edit rates must sum to 1! Check input edit rates or internal calculations.");
             }
         }
-        // Print edit rates for the user
-        if (is_global) {
-            System.out.println("Final edit rates (global model):");
-            System.out.println(Arrays.toString(editRates[0]));
-        } else {
-            System.out.println("Final edit rates (sitewise model):");
-            for (int i = 0; i < nrOfSites; i++) {
-                if (maxStates[i] <= 0) {
-                    System.out.println("  Site " + (i + 1) + ": No edits observed, so no edit rates.");
-                    continue; // No edits observed at this site, so do not print the array
+        
+        if (printRates_) {
+            // Print edit rates for the user
+            if (is_global) {
+                System.out.println("Final edit rates (global model):");
+                System.out.println(Arrays.toString(editRates[0]));
+            } else {
+                System.out.println("Final edit rates (sitewise model):");
+                for (int i = 0; i < nrOfSites; i++) {
+                    if (maxStates[i] <= 0) {
+                        System.out.println("  Site " + (i + 1) + ": No edits observed, so no edit rates.");
+                        continue; // No edits observed at this site, so do not print the array
+                    }
+                    System.out.println("  Site " + (i + 1) + ": ");
+                    System.out.println(Arrays.toString(editRates[i]));
                 }
-                System.out.println("  Site " + (i + 1) + ": ");
-                System.out.println(Arrays.toString(editRates[i]));
             }
         }
     }
@@ -365,9 +374,8 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     }
 
     private void reorderMutationsSequentiallySitewise() {
-        int siteCount = data.getPatternCount();
         boolean isSequential = true;
-        for (int site = 0; site < siteCount; site++) {
+        for (int site = 0; site < nrOfSites; site++) {
             int maxValSeen = 0;
             for (int taxon = 0; taxon < taxonCount; taxon++) {
                 int value = data.getCounts().get(taxon).get(site);
@@ -386,7 +394,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         }
 
         // Remap each site independently in input order so mutations become 1..K per site.
-        for (int site = 0; site < siteCount; site++) {
+        for (int site = 0; site < nrOfSites; site++) {
             Map<Integer, Integer> map = new HashMap<>();
             int nextSequentialMut = 1;
             for (int taxon = 0; taxon < taxonCount; taxon++) {
@@ -468,6 +476,10 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     public double getEditRate(int site, int editIndex) {
         return editRates[site][editIndex - 1];  // Edit index is 1-based for input but 0-base in the array
+    }
+
+    public double getSilencingRate() {
+        return silencingRate_.getValue();
     }
 
     // Required, but not used

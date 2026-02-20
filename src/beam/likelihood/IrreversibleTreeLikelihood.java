@@ -250,6 +250,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
             if ((child1State == 0 || child2State == 0) || (child1State > 0 && child2State > 0 && child1State != child2State)) {
                 ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][i] = 0; // Must be unedited if either child is unedited OR two different edits, so parent must be unedited
+            } else if (child1State > 0 && child2State > 0 && child1State == child2State) {
+                ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][i] = child1State; // Must be that edit if both children are edited with the same edit
             } else if (child1State > 0 && child2State <= 0) {
                 ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][i] = child1State;   // Must be 0 or that edit if one child is edited and the other is unedited or all possible states
             } else if (child2State > 0 && child1State <= 0) {
@@ -397,32 +399,20 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
     @Override
     public void store() {
-        // Store likelihood core components
-        // System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, nrOfNodes);
-        // System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, numNodesNoOrigin);
+        super.store();    // Store logP
 
-            // Store likelihood core components
-            for (int i = 0; i < nrOfNodes; i++) {
-                storedMatrixIndex[i] = currentMatrixIndex[i];
-            }
-            for (int i = 0; i < numNodesNoOrigin; i++) {
-                storedPartialsIndex[i] = currentPartialsIndex[i];
-            }
+        // Store likelihood core components
+        System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, nrOfNodes);
+        System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, numNodesNoOrigin);
     }
 
     @Override
     public void restore() {
-        // // Restore likelihood core components
-        // System.arraycopy(storedMatrixIndex, 0, currentMatrixIndex, 0, nrOfNodes);
-        // System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, numNodesNoOrigin);
+        super.restore();    // Restore logP
 
-            // Restore likelihood core components
-            for (int i = 0; i < nrOfNodes; i++) {
-                currentMatrixIndex[i] = storedMatrixIndex[i];
-            }
-            for (int i = 0; i < numNodesNoOrigin; i++) {
-                currentPartialsIndex[i] = storedPartialsIndex[i];
-            }
+        // Restore likelihood core components
+        System.arraycopy(storedMatrixIndex, 0, currentMatrixIndex, 0, nrOfNodes);
+        System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, numNodesNoOrigin);
     }
 
     @Override
