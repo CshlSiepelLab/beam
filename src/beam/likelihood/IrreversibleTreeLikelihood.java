@@ -80,7 +80,11 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     /* Whether to use scaling for numerical stability */
     protected boolean useScaling = false;
     /* Log scaling factors sum for each site */
-    protected double[][] logScalingFactorsSum;
+    protected double[] logScalingFactorsSums;
+    // Track how many scaling attempt have been done
+    protected int numScalingAttempts = 0;
+    // After this many attempts, try to turn off scaling
+    protected static final int MAX_SCALING_ATTEMPTS = 1000;
     // Threshold for scaling partials
     private static final double SCALING_THRESHOLD = 1.0E-100;
     // State representing missing data
@@ -114,7 +118,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             partialsSizes[i] = nrOfStatesPerSite[i];
         }
         partials = new double[2][nrOfNodes][nrOfSites][];
-        logScalingFactorsSum = new double[2][nrOfSites];
+        logScalingFactorsSums = new double[nrOfSites];
+        numScalingAttempts = 0;
         // Initialize all arrays to 0
         for (int i = 0; i < nrOfNodes; i++) {
             for (int j = 0; j < nrOfSites; j++) {
@@ -177,10 +182,21 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         if (root.getHeight() >= originHeight) {
             return Double.NEGATIVE_INFINITY;
         }
+        // If scaling is already on, check if we have tried scaling too many times without success and if so, turn it off and try again without scaling
+        if (useScaling) {
+            if (numScalingAttempts >= MAX_SCALING_ATTEMPTS) {
+                setUseScaling(false);
+            } else {
+                resetScalingFactors();
+                numScalingAttempts++;
+            }
+        }
         // Calculate likelihood with optional scaling
         traverse(root);
         if (logP == Double.NEGATIVE_INFINITY) {
             setUseScaling(true);
+            numScalingAttempts = 1;
+            resetScalingFactors();
             traverse(root);
             if (logP == Double.NEGATIVE_INFINITY) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
@@ -215,8 +231,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             int updateTransitionProbs1 = traverse(child1);
             int updateTransitionProbs2 = traverse(child2);
 
-            // Calculate partials if either child is dirty
-            if (updateTransitionProbs1 != IS_CLEAN || updateTransitionProbs2 != IS_CLEAN) {
+            // Calculate partials if either child is dirty or if scaling is on since we need to accumulate the log scaling factors
+            if (updateTransitionProbs1 != IS_CLEAN || updateTransitionProbs2 != IS_CLEAN || useScaling) {
                 int childIndex1 = child1.getNr();
                 int childIndex2 = child2.getNr();
                 setPossibleAncestralStates(childIndex1, childIndex2, nodeIndex);
@@ -340,7 +356,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
             if (useScaling) {
                 scalePartials(originIndex, k, new int[]{0});
-                logP += Math.log(originPartials[k][0]) + logScalingFactorsSum[currentPartialsIndex[originIndex]][k];
+                logP += Math.log(originPartials[k][0]) + logScalingFactorsSums[k];
             } else {
                 logP += Math.log(originPartials[k][0]);
             }
@@ -356,13 +372,19 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             scaleFactor = Math.max(scaleFactor, partials[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum][j]);
         }
 
-        // Scale partials if needed and set scaling factor
+        // Scale partials only if needed and set scaling factor
         if (scaleFactor < SCALING_THRESHOLD) {
             for (int j : possibleStates) {
                 partials[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum][j] /= scaleFactor;
             }
         }
-        logScalingFactorsSum[currentPartialsIndex[nodeIndex]][siteNum] += scaleFactor < SCALING_THRESHOLD ? Math.log(scaleFactor) : 0.0;
+        logScalingFactorsSums[siteNum] += scaleFactor < SCALING_THRESHOLD ? Math.log(scaleFactor) : 0.0;
+    }
+
+    public void resetScalingFactors() {
+        // Reset log scaling factors sums for each site
+        // We might not need to do this full reset, but I am for doing it for now
+        Arrays.fill(logScalingFactorsSums, 0.0);
     }
 
     public void setUseScaling(boolean status) {
