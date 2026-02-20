@@ -301,7 +301,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             }
 
             if (useScaling) {
-                scalePartials(parentIndex, k, possibleParentStates);
+                scalePartials(partials[currentPartialsIndex[parentIndex]][parentIndex][k], possibleParentStates, logScalingFactorsSums[k]);
             }
         }
     }
@@ -341,36 +341,45 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         final double[][] rootPartials = partials[currentPartialsIndex[rootIndex]][rootIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
-            final int[] possibleStates = getPossibleStates(ancestralStates[currentPartialsIndex[rootIndex]][rootIndex][k], allStatesPerSite[k]);
-            double sum1 = 0.0;
-            for (int j : possibleStates) {
-                sum1 += getTransitionProbFromCoreValues(0, j, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][j];
+            final int[] possibleRootStates = getPossibleStates(ancestralStates[currentPartialsIndex[rootIndex]][rootIndex][k], allStatesPerSite[k]);
+            double[] originPartials = new double[possibleRootStates.length];
+            for (int j = 0; j < possibleRootStates.length; j++) {
+                int state = possibleRootStates[j];
+                originPartials[j] = getTransitionProbFromCoreValues(0, state, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][state];
             }
 
             if (useScaling) {
-                scalePartials(originIndex, k, new int[]{0});
-                logP += Math.log(sum1) + logScalingFactorsSums[k];
+                scalePartials(originPartials, new int[]{0}, logScalingFactorsSums[k]);
+                double sum = 0.0;
+                for (double v : originPartials) {
+                    sum += v;
+                }
+                logP += Math.log(sum) + logScalingFactorsSums[k];
             } else {
-                logP += Math.log(sum1);
+                double sum = 0.0;
+                for (double v : originPartials) {
+                    sum += v;
+                }
+                logP += Math.log(sum);
             }
         }
 
         return logP;
     }
 
-    protected void scalePartials(int nodeIndex, int siteNum, int[] possibleStates) {
+    protected void scalePartials(double[] partials, int[] possibleStates, double logSum) {
         // Find the maximum partial value for scaling
         double scaleFactor = 0.0;
         for (int j : possibleStates) {
-            scaleFactor = Math.max(scaleFactor, partials[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum][j]);
+            scaleFactor = Math.max(scaleFactor, partials[j]);
         }
 
         // Scale partials only if needed and set scaling factor
         if (scaleFactor < SCALING_THRESHOLD) {
             for (int j : possibleStates) {
-                partials[currentPartialsIndex[nodeIndex]][nodeIndex][siteNum][j] /= scaleFactor;
+                partials[j] /= scaleFactor;
             }
-            logScalingFactorsSums[siteNum] += Math.log(scaleFactor);
+            logSum += Math.log(scaleFactor);
         }
     }
 
