@@ -8,9 +8,9 @@
     <property name="lib" location="lib"/>
 
     <!-- Location to check for local copy of beast2 repository -->
-    <property name="local-beast-source-root" location="../beast2"/>
-    <property name="local-beastfx-source-root" location="../BeastFX"/>
-    <property name="local-beast-classic-root" location="../BEAST_CLASSIC"/>
+    <property name="local-beast-source-root" location="./beast-source"/>
+    <property name="local-beastfx-source-root" location="./beastfx-source"/>
+    <property name="local-beast-classic-root" location="./beast-classic-source"/>
 
     <!-- BEAST 2 currently uses Java 1.8 -->
     <property name="releaseVersion" value="17"/>
@@ -91,7 +91,6 @@
 
     <target name="get-local-beast" depends="find-beast" if="localBeastAvailable">
         <echo>Compiling against beast2 source found at ${local-beast-source-root}.</echo>
-        <!-- <property name="beast-source-root" value="${local-beast-source-root}"/> -->
         <copy todir="${beast-source-root}">
           <fileset dir="${local-beast-source-root}" includes="**/*.*"/>
         </copy>
