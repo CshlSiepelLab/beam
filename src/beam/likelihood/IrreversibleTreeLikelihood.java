@@ -70,9 +70,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     /* Stored partials indices for each node */
     protected int[] storedPartialsIndex;
     /* Ancestral states for each node and site */
-    protected int[][] ancestralStates;
-    /* Stored ancestral states for each node and site */
-    protected int[][] storedAncestralStates;
+    protected int[][][] ancestralStates;
     /* All possible states per site*/
     private int[][] allStatesPerSite;
     /* State representing unedited sequence */
@@ -138,20 +136,13 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             }
         }
 
+        ancestralStates = new int[2][numNodesNoOrigin][nrOfSites];
+
         // Initialize indices to 0
         currentMatrixIndex = new int[nrOfNodes];
         storedMatrixIndex = new int[nrOfNodes];
         currentPartialsIndex = new int[numNodesNoOrigin];
         storedPartialsIndex = new int[numNodesNoOrigin];
-
-        ancestralStates = new int[numNodesNoOrigin][nrOfSites];
-        storedAncestralStates = new int[numNodesNoOrigin][nrOfSites];
-        for (int i = 0; i < numNodesNoOrigin; i++) {
-            for (int j = 0; j < nrOfSites; j++) {
-                ancestralStates[i][j] = -1;
-                storedAncestralStates[i][j] = -1;
-            }
-        }
 
         // Set initial states
         setStates(treeInput.get().getRoot());
@@ -165,10 +156,9 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             List<Integer> states = data.getCounts().get(taxonIndex);
             int leafIndex = node.getNr();
             for (int i = 0; i < nrOfSites; i++) {
-                // Set the known state to 1.0 for tips
+                // Set the observed states for tips that will never change, hence no need to initialize both partials index
                 partials[currentPartialsIndex[leafIndex]][leafIndex][i][states.get(i)] = 1.0;
-                // Set the possible ancestral state for tips
-                ancestralStates[leafIndex][i] = (states.get(i) == missingDataStatePerSite[i]) ? -1 : states.get(i);
+                ancestralStates[currentPartialsIndex[leafIndex]][leafIndex][i] = (states.get(i) == missingDataStatePerSite[i]) ? -1 : states.get(i);
             }
         } else {
             setStates(node.getLeft());
@@ -196,8 +186,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         traverse(root);
         if (logP == Double.NEGATIVE_INFINITY) {
             setUseScaling(true);
-            numScalingAttempts = 1;
             resetScalingFactors();
+            numScalingAttempts = 1;
             traverse(root);
             if (logP == Double.NEGATIVE_INFINITY) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
@@ -252,18 +242,20 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     }
 
     public void setPossibleAncestralStates(int childIndex1, int childIndex2, int parentIndex) {
-        for (int i = 0; i < nrOfSites; i++) {
-            final int child1State = ancestralStates[childIndex1][i];
-            final int child2State = ancestralStates[childIndex2][i];
+        currentPartialsIndex[parentIndex] = 1 - currentPartialsIndex[parentIndex];
 
-            if (child1State == 0 || child2State == 0 || 
-                (child1State > 0 && child2State > 0 && child1State != child2State)) {
-                ancestralStates[parentIndex][i] = 0;
-                continue;
-            } else if (child1State > 0 || child2State > 0) {
-                ancestralStates[parentIndex][i] = child1State >= 0 ? child1State : child2State;
+        for (int i = 0; i < nrOfSites; i++) {
+            final int child1State = ancestralStates[currentPartialsIndex[childIndex1]][childIndex1][i];
+            final int child2State = ancestralStates[currentPartialsIndex[childIndex2]][childIndex2][i];
+
+            if ((child1State == 0 || child2State == 0) || (child1State > 0 && child2State > 0 && child1State != child2State)) {
+                ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][i] = 0; // Must be unedited if either child is unedited OR two different edits, so parent must be unedited
+            } else if (child1State > 0 && child2State <= 0) {
+                ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][i] = child1State;   // Must be 0 or that edit if one child is edited and the other is unedited or all possible states
+            } else if (child2State > 0 && child1State <= 0) {
+                ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][i] = child2State;   // Must be 0 or that edit if one child is edited and the other is unedited or all possible states
             } else {
-                ancestralStates[parentIndex][i] = -1; // All states possible
+                ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][i] = -1; // All states possible if both children are all states possible
             }
         }
     }
@@ -271,10 +263,10 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     /*
      * Convert the possible ancestral state integer to an array of states to calculate partials for in the pruning algorithm
      */
-    private int[] getPossibleStates(int state, int siteNum) {
+    private int[] getPossibleStates(int state, int[] allStates) {
         return state == 0 ? UNEDITED_STATE :
                state > 0 ? new int[]{0, state} :
-               allStatesPerSite[siteNum];
+               allStates;
     }
 
     /**
@@ -283,15 +275,14 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
      * states given the states of the children.
      */
     public void calculatePartials(int childIndex1, int childIndex2, int parentIndex) {
-        currentPartialsIndex[parentIndex] = 1 - currentPartialsIndex[parentIndex];
         double[][] child1partials = partials[currentPartialsIndex[childIndex1]][childIndex1];
         double[][] child2partials = partials[currentPartialsIndex[childIndex2]][childIndex2];
         double[][] parentPartials = partials[currentPartialsIndex[parentIndex]][parentIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
-            int[] possibleParentStates = getPossibleStates(ancestralStates[parentIndex][k], k);
-            int[] child1States = getPossibleStates(ancestralStates[childIndex1][k], k);
-            int[] child2States = getPossibleStates(ancestralStates[childIndex2][k], k);
+            int[] possibleParentStates = getPossibleStates(ancestralStates[currentPartialsIndex[parentIndex]][parentIndex][k], allStatesPerSite[k]);
+            int[] child1States = getPossibleStates(ancestralStates[currentPartialsIndex[childIndex1]][childIndex1][k], allStatesPerSite[k]);
+            int[] child2States = getPossibleStates(ancestralStates[currentPartialsIndex[childIndex2]][childIndex2][k], allStatesPerSite[k]);
 
             // Need to reset partials
             Arrays.fill(parentPartials[k], 0.0);
@@ -299,10 +290,10 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             // Calculate partials for all states
             for (int i : possibleParentStates) {
                 double sum1 = 0.0;
-                double sum2 = 0.0;
                 for (int j : child1States) {
                     sum1 += getTransitionProbFromCoreValues(i, j, nodeCoreTransitionValues[currentMatrixIndex[childIndex1]][childIndex1], k) * child1partials[k][j];
                 }
+                double sum2 = 0.0;
                 for (int j : child2States) {
                     sum2 += getTransitionProbFromCoreValues(i, j, nodeCoreTransitionValues[currentMatrixIndex[childIndex2]][childIndex2], k) * child2partials[k][j];
                 }
@@ -350,7 +341,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         final double[][] rootPartials = partials[currentPartialsIndex[rootIndex]][rootIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
-            final int[] possibleStates = getPossibleStates(ancestralStates[rootIndex][k], k);
+            final int[] possibleStates = getPossibleStates(ancestralStates[currentPartialsIndex[rootIndex]][rootIndex][k], allStatesPerSite[k]);
             double sum1 = 0.0;
             for (int j : possibleStates) {
                 sum1 += getTransitionProbFromCoreValues(0, j, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][j];
@@ -397,41 +388,32 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
     @Override
     public void store() {
-        super.store();
-
         // Store likelihood core components
-        System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, nrOfNodes);
-        System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, numNodesNoOrigin);
+        // System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, nrOfNodes);
+        // System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, numNodesNoOrigin);
 
-        for (int i = 0; i < numNodesNoOrigin; i++) {
-            for (int j = 0; j < nrOfSites; j++) {
-                storedAncestralStates[i][j] = ancestralStates[i][j];
+            // Store likelihood core components
+            for (int i = 0; i < nrOfNodes; i++) {
+                storedMatrixIndex[i] = currentMatrixIndex[i];
             }
-        }
+            for (int i = 0; i < numNodesNoOrigin; i++) {
+                storedPartialsIndex[i] = currentPartialsIndex[i];
+            }
     }
 
     @Override
     public void restore() {
-        super.restore();
-        
-        // Restore likelihood core components
-        System.arraycopy(storedMatrixIndex, 0, currentMatrixIndex, 0, nrOfNodes);
-        System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, numNodesNoOrigin);
+        // // Restore likelihood core components
+        // System.arraycopy(storedMatrixIndex, 0, currentMatrixIndex, 0, nrOfNodes);
+        // System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, numNodesNoOrigin);
 
-        if (storedAncestralStates == null) {
-            storedAncestralStates = new int[numNodesNoOrigin][nrOfSites];
+            // Restore likelihood core components
+            for (int i = 0; i < nrOfNodes; i++) {
+                currentMatrixIndex[i] = storedMatrixIndex[i];
+            }
             for (int i = 0; i < numNodesNoOrigin; i++) {
-                for (int j = 0; j < nrOfSites; j++) {
-                    storedAncestralStates[i][j] = ancestralStates[i][j];
-                }
+                currentPartialsIndex[i] = storedPartialsIndex[i];
             }
-        }
-
-        for (int i = 0; i < numNodesNoOrigin; i++) {
-            for (int j = 0; j < nrOfSites; j++) {
-                ancestralStates[i][j] = storedAncestralStates[i][j];
-            }
-        }
     }
 
     @Override
