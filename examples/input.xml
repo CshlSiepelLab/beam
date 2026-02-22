@@ -38,140 +38,140 @@ of BEAST2. -->
 
 
 <run id="mcmc" spec="MCMC" chainLength="1000000">
-        <state id="state" spec="State" storeEvery="5000">
-            <stateNode id="tree" spec="beam.tree.StartingTreeFromNewick" taxa="@alignment" IsLabelledNewick="true" newickFile="examples/startingTree.nwk">
-                <taxonset id="taxonset" spec="TaxonSet" alignment="@alignment"/>
-            </stateNode>
-            <parameter id="silencingRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="1000">0.1</parameter>
-            <parameter id="crisprClockRate" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
-            <parameter id="tissueMigrationRates" spec="parameter.RealParameter" lower="0" dimension="3" name="stateNode">1</parameter>
-            <parameter id="tissueClockRate" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
-            <parameter id="piPrimaryTissueFreq" spec="parameter.RealParameter" estimate="true" lower="0" upper="1" name="stateNode">0.5</parameter>
-            <parameter id="birthDiffRate" spec="parameter.RealParameter" lower="1e-12" name="stateNode">0.005</parameter>
-            <parameter id="relativeDeathRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="0.999999">0.25</parameter>
-        </state>
+    <state id="state" spec="State" storeEvery="5000">
+        <stateNode id="tree" spec="beam.tree.StartingTreeFromNewick" taxa="@alignment" IsLabelledNewick="true" newickFile="examples/startingTree.nwk">
+            <taxonset id="taxonset" spec="TaxonSet" alignment="@alignment"/>
+        </stateNode>
+        <parameter id="silencingRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="1000">0.1</parameter>
+        <parameter id="crisprClockRate" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
+        <parameter id="tissueMigrationRates" spec="parameter.RealParameter" lower="0" dimension="3" name="stateNode">1</parameter>
+        <parameter id="tissueClockRate" spec="parameter.RealParameter" name="stateNode">0.01</parameter>
+        <parameter id="piPrimaryTissueFreq" spec="parameter.RealParameter" estimate="true" lower="0" upper="1" name="stateNode">0.5</parameter>
+        <parameter id="birthDiffRate" spec="parameter.RealParameter" lower="1e-12" name="stateNode">0.005</parameter>
+        <parameter id="relativeDeathRate" spec="parameter.RealParameter" lower="0" name="stateNode" upper="0.999999">0.25</parameter>
+    </state>
+    
+    
+    <distribution id="posterior" spec="CompoundDistribution">
         
-        
-        <distribution id="posterior" spec="CompoundDistribution">
-            
-            <distribution id="prior" spec="CompoundDistribution">
+        <distribution id="prior" spec="CompoundDistribution">
 
-                <distribution id="birthDeath" spec="beast.base.evolution.speciation.BirthDeathGernhard08Model" 
-                    tree="@tree" originHeight="@originTime" birthDiffRate="@birthDiffRate" relativeDeathRate="@relativeDeathRate"/>
+            <distribution id="birthDeath" spec="beast.base.evolution.speciation.BirthDeathGernhard08Model" 
+                tree="@tree" originHeight="@originTime" birthDiffRate="@birthDiffRate" relativeDeathRate="@relativeDeathRate"/>
 
-                <prior id="silencingRatePrior" name="distribution" x="@silencingRate">
-                    <Exponential name="distr">
-                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
-                    </Exponential>
-                </prior>
+            <prior id="silencingRatePrior" name="distribution" x="@silencingRate">
+                <Exponential name="distr">
+                    <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
+                </Exponential>
+            </prior>
 
-                <prior id="crisprClockRatePrior" name="distribution" x="@crisprClockRate">
-                    <Exponential name="distr">
-                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
-                    </Exponential>
-                </prior>
+            <prior id="crisprClockRatePrior" name="distribution" x="@crisprClockRate">
+                <Exponential name="distr">
+                    <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
+                </Exponential>
+            </prior>
 
-                <prior id="tissueMigrationRatesPrior" name="distribution" x="@tissueMigrationRates">
-                    <Exponential name="distr">
-                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">1</parameter>
-                    </Exponential>
-                </prior>
+            <prior id="tissueMigrationRatesPrior" name="distribution" x="@tissueMigrationRates">
+                <Exponential name="distr">
+                    <parameter spec="parameter.RealParameter" estimate="false" name="mean">1</parameter>
+                </Exponential>
+            </prior>
 
-                <prior id="tissueClockRatePrior" name="distribution" x="@tissueClockRate">
-                    <Exponential name="distr">
-                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
-                    </Exponential>
-                </prior>
+            <prior id="tissueClockRatePrior" name="distribution" x="@tissueClockRate">
+                <Exponential name="distr">
+                    <parameter spec="parameter.RealParameter" estimate="false" name="mean">0.1</parameter>
+                </Exponential>
+            </prior>
 
-                <prior id="piPrimaryTissueFreqPrior" name="distribution" x="@piPrimaryTissueFreq">
-                    <Uniform name="distr" lower="0" upper="1"/>
-                </prior>
+            <prior id="piPrimaryTissueFreqPrior" name="distribution" x="@piPrimaryTissueFreq">
+                <Uniform name="distr" lower="0" upper="1"/>
+            </prior>
 
-                <prior id="birthDiffRatePrior" name="distribution" x="@birthDiffRate">
-                    <Exponential name="distr">
-                        <parameter spec="parameter.RealParameter" estimate="false" name="mean">1.0</parameter>
-                    </Exponential>
-                </prior>
+            <prior id="birthDiffRatePrior" name="distribution" x="@birthDiffRate">
+                <Exponential name="distr">
+                    <parameter spec="parameter.RealParameter" estimate="false" name="mean">1.0</parameter>
+                </Exponential>
+            </prior>
 
-                <prior id="relativeDeathRatePrior" name="distribution" x="@relativeDeathRate">
-                    <Uniform name="distr" lower="0" upper="0.999999"/>
-                </prior>
-
-            </distribution>
-            
-            
-            <distribution id="likelihood" spec="CompoundDistribution" useThreads="true">
-                
-                <distribution id="treeLikelihood" spec="beam.likelihood.IrreversibleTreeLikelihood" origin="@originTime" data="@alignment" tree="@tree">
-                    <siteModel spec="SiteModel" id="siteModel" mutationRate="1" gammaCategoryCount="1">
-                        <substModel idref="substModelCrispr"/>
-                    </siteModel>
-                    <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@crisprClockRate"/>
-                </distribution>
-                
-                <distribution id="traitLikelihood" spec="beam.likelihood.BeagleAncestralTissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
-                    <siteModel id="geoSiteModel.s:tissue" spec="SiteModel" gammaCategoryCount="1" mutationRate="1">
-                        <substModel id="substModelMigration" spec="beam.substitutionmodel.TissueSubstitutionModel" rates="@tissueMigrationRates" pi="@piPrimaryTissueFreq" frequencies="@rootTissueFrequencies"/>
-                    </siteModel>
-                    <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@tissueClockRate"/>
-                </distribution>
-                
-            </distribution>
+            <prior id="relativeDeathRatePrior" name="distribution" x="@relativeDeathRate">
+                <Uniform name="distr" lower="0" upper="0.999999"/>
+            </prior>
 
         </distribution>
+        
+        
+        <distribution id="likelihood" spec="CompoundDistribution" useThreads="true">
+            
+            <distribution id="treeLikelihood" spec="beam.likelihood.IrreversibleTreeLikelihood" origin="@originTime" data="@alignment" tree="@tree">
+                <siteModel spec="SiteModel" id="siteModel" mutationRate="1" gammaCategoryCount="1">
+                    <substModel idref="substModelCrispr"/>
+                </siteModel>
+                <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@crisprClockRate"/>
+            </distribution>
+            
+            <distribution id="traitLikelihood" spec="beam.likelihood.BeagleAncestralTissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
+                <siteModel id="geoSiteModel.s:tissue" spec="SiteModel" gammaCategoryCount="1" mutationRate="1">
+                    <substModel id="substModelMigration" spec="beam.substitutionmodel.TissueSubstitutionModel" rates="@tissueMigrationRates" pi="@piPrimaryTissueFreq" frequencies="@rootTissueFrequencies"/>
+                </siteModel>
+                <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@tissueClockRate"/>
+            </distribution>
+            
+        </distribution>
+
+    </distribution>
 
 
-<!-- Tree topology moves -->
-<operator id="exchangeNarrow" spec="Exchange" isNarrow="true" tree="@tree" weight="15.0"/>
-<operator id="exchangeWide" spec="Exchange" isNarrow="false" tree="@tree" weight="0.5"/>
-<operator id="wilsonBalding" spec="WilsonBalding" tree="@tree" weight="0.5"/>
-<!-- Node height moves -->
-<operator id="nodeHeights" spec="kernel.BactrianNodeOperator" tree="@tree" weight="30.0"/>
-<!-- Subtree slide moves -->
-<operator id="subtreeSlide" spec="SubtreeSlide" tree="@tree" size="3.7" weight="15.0"/>
-<operator id="subtreeSlideLarge" spec="SubtreeSlide" tree="@tree" size="6.6" weight="2.0"/>
-<!-- Whole tree scaling -->
-<operator id="scaleFullTree" spec="ScaleOperator" tree="@tree" scaleFactor="0.25" upper="10.0" weight="2.0"/>
-<operator id="rootOnlyScaler" spec="ScaleOperator" rootOnly="true" tree="@tree" scaleFactor="0.1" upper="10.0" weight="2.0"/>
-<!-- CRISPR parameters -->
-<operator id="clockRateScaler" spec="ScaleOperator" parameter="@crisprClockRate" scaleFactor="0.25" upper="10.0" weight="2.0"/>
-<operator id="silencingRateScaler" spec="ScaleOperator" parameter="@silencingRate" scaleFactor="0.25" upper="10.0" weight="1.0"/>
-<!-- Birth-death parameters -->
-<operator id="birthDiffRateScaler" spec="ScaleOperator" parameter="@birthDiffRate" scaleFactor="0.25" upper="10.0" weight="1.0"/>
-<operator id="relativeDeathRateScaler" spec="ScaleOperator" parameter="@relativeDeathRate" scaleFactor="0.25" upper="10.0" weight="0.5"/>
-<!-- Tissue parameters -->
-<operator id="tissueMigrationRatesScaler" spec="ScaleOperator" parameter="@tissueMigrationRates" scaleAllIndependently="true" scaleFactor="0.25" upper="10.0" weight="1.0"/>
-<operator id="tissueClockRateScaler" spec="ScaleOperator" parameter="@tissueClockRate" scaleFactor="0.25" upper="10.0" weight="2.0"/>
-<operator id="piPrimaryTissueFreqScaler" spec="ScaleOperator" parameter="@piPrimaryTissueFreq" scaleFactor="0.25" upper="10.0" weight="1.0"/>
+    <!-- Tree topology moves -->
+    <operator id="exchangeNarrow" spec="Exchange" isNarrow="true" tree="@tree" weight="15.0"/>
+    <operator id="exchangeWide" spec="Exchange" isNarrow="false" tree="@tree" weight="0.5"/>
+    <operator id="wilsonBalding" spec="WilsonBalding" tree="@tree" weight="0.5"/>
+    <!-- Node height moves -->
+    <operator id="nodeHeights" spec="kernel.BactrianNodeOperator" tree="@tree" weight="30.0"/>
+    <!-- Subtree slide moves -->
+    <operator id="subtreeSlide" spec="SubtreeSlide" tree="@tree" size="3.7" weight="15.0"/>
+    <operator id="subtreeSlideLarge" spec="SubtreeSlide" tree="@tree" size="6.6" weight="2.0"/>
+    <!-- Whole tree scaling -->
+    <operator id="scaleFullTree" spec="ScaleOperator" tree="@tree" scaleFactor="0.25" upper="10.0" weight="2.0"/>
+    <operator id="rootOnlyScaler" spec="ScaleOperator" rootOnly="true" tree="@tree" scaleFactor="0.1" upper="10.0" weight="2.0"/>
+    <!-- CRISPR parameters -->
+    <operator id="clockRateScaler" spec="ScaleOperator" parameter="@crisprClockRate" scaleFactor="0.25" upper="10.0" weight="2.0"/>
+    <operator id="silencingRateScaler" spec="ScaleOperator" parameter="@silencingRate" scaleFactor="0.25" upper="10.0" weight="1.0"/>
+    <!-- Birth-death parameters -->
+    <operator id="birthDiffRateScaler" spec="ScaleOperator" parameter="@birthDiffRate" scaleFactor="0.25" upper="10.0" weight="1.0"/>
+    <operator id="relativeDeathRateScaler" spec="ScaleOperator" parameter="@relativeDeathRate" scaleFactor="0.25" upper="10.0" weight="0.5"/>
+    <!-- Tissue parameters -->
+    <operator id="tissueMigrationRatesScaler" spec="ScaleOperator" parameter="@tissueMigrationRates" scaleAllIndependently="true" scaleFactor="0.25" upper="10.0" weight="1.0"/>
+    <operator id="tissueClockRateScaler" spec="ScaleOperator" parameter="@tissueClockRate" scaleFactor="0.25" upper="10.0" weight="2.0"/>
+    <operator id="piPrimaryTissueFreqScaler" spec="ScaleOperator" parameter="@piPrimaryTissueFreq" scaleFactor="0.25" upper="10.0" weight="1.0"/>
 
     <!-- Loggers -->
-        <logger id="tracelog" spec="Logger" fileName="result.log" logEvery="100" model="@posterior" sanitiseHeaders="true" sort="smart">
-            <log idref="posterior"/>
-            <log idref="likelihood"/>
-            <log idref="prior"/>
-            <log id="treeHeight" spec="beast.base.evolution.tree.TreeHeightLogger" tree="@tree"/>
-            <log idref="silencingRate" />
-            <log idref="crisprClockRate"/>
-            <log idref="tissueMigrationRates"/>
-            <log idref="tissueClockRate"/>
-            <log id="tissueSubstModelLogger" spec="beam.substitutionmodel.TissueSubstitutionModelLogger" dataType="@tissueDatatype" model="@substModelMigration"/>
-            <log idref="treeLikelihood"/>
-            <log idref="traitLikelihood"/>
-            <log idref="birthDiffRate"/>
-            <log idref="relativeDeathRate"/>
-            <log idref="piPrimaryTissueFreq"/>
-        </logger>
+    <logger id="tracelog" spec="Logger" fileName="result.log" logEvery="100" model="@posterior" sanitiseHeaders="true" sort="smart">
+        <log idref="posterior"/>
+        <log idref="likelihood"/>
+        <log idref="prior"/>
+        <log id="treeHeight" spec="beast.base.evolution.tree.TreeHeightLogger" tree="@tree"/>
+        <log idref="silencingRate" />
+        <log idref="crisprClockRate"/>
+        <log idref="tissueMigrationRates"/>
+        <log idref="tissueClockRate"/>
+        <log id="tissueSubstModelLogger" spec="beam.substitutionmodel.TissueSubstitutionModelLogger" dataType="@tissueDatatype" model="@substModelMigration"/>
+        <log idref="treeLikelihood"/>
+        <log idref="traitLikelihood"/>
+        <log idref="birthDiffRate"/>
+        <log idref="relativeDeathRate"/>
+        <log idref="piPrimaryTissueFreq"/>
+    </logger>
 
-        <logger id="screenlog" spec="Logger" logEvery="1000">
-            <log idref="posterior"/>
-            <log spec="util.ESS" arg="@posterior"/>
-        </logger>
+    <logger id="screenlog" spec="Logger" logEvery="1000">
+        <log idref="posterior"/>
+        <log spec="util.ESS" arg="@posterior"/>
+    </logger>
 
-        <logger id="treeWithTraitLogger" spec="Logger" fileName="result.trees" logEvery="100" mode="tree">
-                <log id="treeWithTraitLoggerItem" spec="beastclassic.evolution.tree.TreeWithTraitLogger" tree="@tree">
-                    <metadata idref="traitLikelihood"/>
-                </log>
-        </logger>
+    <logger id="treeWithTraitLogger" spec="Logger" fileName="result.trees" logEvery="100" mode="tree">
+            <log id="treeWithTraitLoggerItem" spec="beastclassic.evolution.tree.TreeWithTraitLogger" tree="@tree">
+                <metadata idref="traitLikelihood"/>
+            </log>
+    </logger>
 
     <operatorschedule id="OperatorSchedule" spec="kernel.BactrianOperatorSchedule"/>
 </run>

@@ -69,6 +69,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     protected int[] currentPartialsIndex;
     /* Stored partials indices for each node */
     protected int[] storedPartialsIndex;
+    // Node index for the origin
+    protected int originNodeIndex;
     /* Ancestral states for each node and site */
     protected int[][][] ancestralStates;
     /* All possible states per site*/
@@ -77,8 +79,9 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     private static final int[] UNEDITED_STATE = new int[]{0};
     /* Whether to use scaling for numerical stability */
     protected boolean useScaling = false;
+    protected boolean storedUseScaling = false;
     /* Log scaling factors sum for each site */
-    protected double[] logScalingFactorsSums;
+    protected double[][][] logScalingFactors;
     // Track how many scaling attempt have been done
     protected int numScalingAttempts = 0;
     // After this many attempts, try to turn off scaling
@@ -115,16 +118,17 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         for (int i = 0; i < nrOfSites; i++) {
             partialsSizes[i] = nrOfStatesPerSite[i];
         }
-        partials = new double[2][numNodesNoOrigin][nrOfSites][];
+        partials = new double[2][nrOfNodes][nrOfSites][];
         // Initialize all arrays to 0
-        for (int i = 0; i < numNodesNoOrigin; i++) {
+        for (int i = 0; i < nrOfNodes; i++) {
             for (int j = 0; j < nrOfSites; j++) {
                 partials[0][i][j] = new double[partialsSizes[j]];
                 partials[1][i][j] = new double[partialsSizes[j]];
             }
         }
+        originNodeIndex = nrOfNodes - 1; // Set the origin node index to be the last index
 
-        logScalingFactorsSums = new double[nrOfSites];
+        logScalingFactors = new double[2][nrOfNodes][nrOfSites]; // First index is for store/restore swapping
         numScalingAttempts = 0;
 
         // Initialize arrays
@@ -141,8 +145,8 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         // Initialize indices to 0
         currentMatrixIndex = new int[nrOfNodes];
         storedMatrixIndex = new int[nrOfNodes];
-        currentPartialsIndex = new int[numNodesNoOrigin];
-        storedPartialsIndex = new int[numNodesNoOrigin];
+        currentPartialsIndex = new int[nrOfNodes];
+        storedPartialsIndex = new int[nrOfNodes];
 
         // Set initial states
         setStates(treeInput.get().getRoot());
@@ -176,17 +180,19 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         // If scaling is already on, check if we have tried scaling too many times without success and if so, turn it off and try again without scaling
         if (useScaling) {
             if (numScalingAttempts >= MAX_SCALING_ATTEMPTS) {
+                System.out.println("Turning scaling back off.");
                 setUseScaling(false);
+                hasDirt = IS_DIRTY; // Set dirty to recalculate all partials without scaling
             } else {
-                resetScalingFactors();
                 numScalingAttempts++;
             }
         }
         // Calculate likelihood with optional scaling
         traverse(root);
         if (logP == Double.NEGATIVE_INFINITY) {
+            System.out.println("Likelihood underflow, continuing with scaling turned on for numerical stability.");
             setUseScaling(true);
-            resetScalingFactors();
+            hasDirt = IS_DIRTY; // Set dirty to recalculate all partials with scaling
             numScalingAttempts = 1;
             traverse(root);
             if (logP == Double.NEGATIVE_INFINITY) {
@@ -303,7 +309,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             }
 
             if (useScaling) {
-                scalePartials(partials[currentPartialsIndex[parentIndex]][parentIndex][k], possibleParentStates, logScalingFactorsSums[k]);
+                logScalingFactors[currentPartialsIndex[parentIndex]][parentIndex][k] = scalePartials(partials[currentPartialsIndex[parentIndex]][parentIndex][k], possibleParentStates);
             }
         }
     }
@@ -341,35 +347,33 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         double logP = 0.0;
 
         final double[][] rootPartials = partials[currentPartialsIndex[rootIndex]][rootIndex];
+        double[][] originPartials = partials[currentPartialsIndex[originNodeIndex]][originNodeIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
+            Arrays.fill(originPartials[k], 0.0);    // Reset origin partials before calculation
             final int[] possibleRootStates = getPossibleStates(ancestralStates[currentPartialsIndex[rootIndex]][rootIndex][k], allStatesPerSite[k]);
-            double[] originPartials = new double[possibleRootStates.length];
-            for (int j = 0; j < possibleRootStates.length; j++) {
-                int state = possibleRootStates[j];
-                originPartials[j] = getTransitionProbFromCoreValues(0, state, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][state];
+            for (int rootState : possibleRootStates) {
+                originPartials[k][rootState] = getTransitionProbFromCoreValues(0, rootState, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][rootState];
             }
 
             if (useScaling) {
-                scalePartials(originPartials, new int[]{0}, logScalingFactorsSums[k]);
-                double sum = 0.0;
-                for (double v : originPartials) {
-                    sum += v;
-                }
-                logP += Math.log(sum) + logScalingFactorsSums[k];
-            } else {
-                double sum = 0.0;
-                for (double v : originPartials) {
-                    sum += v;
-                }
-                logP += Math.log(sum);
+                logScalingFactors[currentPartialsIndex[originNodeIndex]][originNodeIndex][k] = scalePartials(originPartials[k], new int[]{0});
             }
+
+            double sum = 0.0;
+            for (double v : originPartials[k]) {
+                sum += v;
+            }
+            logP += Math.log(sum);
         }
+
+        // Can just add the total log scaling factors at the end across all sites since we are in log space
+        if (useScaling) logP += accumulateLogScalingFactors();
 
         return logP;
     }
 
-    protected void scalePartials(double[] partials, int[] possibleStates, double logSum) {
+    protected double scalePartials(double[] partials, int[] possibleStates) {
         // Find the maximum partial value for scaling
         double scaleFactor = 0.0;
         for (int j : possibleStates) {
@@ -381,18 +385,26 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             for (int j : possibleStates) {
                 partials[j] /= scaleFactor;
             }
-            logSum += Math.log(scaleFactor);
+            return Math.log(scaleFactor);
         }
+        return 0.0;
     }
 
-    public void resetScalingFactors() {
-        // Reset log scaling factors sums for each site
-        // We might not need to do this full reset, but I am for doing it for now
-        Arrays.fill(logScalingFactorsSums, 0.0);
+    public double accumulateLogScalingFactors() {
+        double totalLogScaling = 0.0;
+        for (int i = 0; i < nrOfSites; i++) {
+            for (int j = 0; j < nrOfNodes; j++) {
+                totalLogScaling += logScalingFactors[currentPartialsIndex[j]][j][i];
+            }
+        }
+        return totalLogScaling;
     }
 
     public void setUseScaling(boolean status) {
         useScaling = status;
+        if (useScaling) {
+            logScalingFactors = new double[2][nrOfNodes][nrOfSites]; // Reset log scaling factors when turning on scaling
+        }
     }
 
 
