@@ -85,7 +85,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     // Track how many scaling attempt have been done
     protected int numScalingAttempts = 0;
     // After this many attempts, try to turn off scaling
-    protected static final int MAX_SCALING_ATTEMPTS = 10000;
+    protected static final int MAX_SCALING_ATTEMPTS = 1000;
     // Threshold for scaling partials
     private static final double SCALING_THRESHOLD = 1.0E-100;
     // State representing missing data
@@ -189,7 +189,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         }
         // Calculate likelihood with optional scaling
         traverse(root);
-        if (logP == Double.NEGATIVE_INFINITY) {
+        if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
             // System.out.println("Likelihood underflow, continuing with scaling turned on for numerical stability.");
             setUseScaling(true);
             hasDirt = IS_DIRTY; // Set dirty to recalculate all partials with scaling
@@ -381,7 +381,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         }
 
         // Scale partials only if needed and set scaling factor
-        if (scaleFactor < SCALING_THRESHOLD) {
+        if (scaleFactor < SCALING_THRESHOLD && scaleFactor > 0.0) {
             for (int j : possibleStates) {
                 partials[j] /= scaleFactor;
             }
@@ -405,6 +405,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         if (useScaling) {
             logScalingFactors = new double[2][nrOfNodes][nrOfSites]; // Reset log scaling factors when turning on scaling
         }
+        System.out.println("Scaling is now " + (useScaling ? "ON" : "OFF"));
     }
 
 
