@@ -17,7 +17,6 @@ import beast.base.evolution.substitutionmodel.EigenDecomposition;
 import beast.base.evolution.substitutionmodel.Frequencies;
 import beast.base.evolution.substitutionmodel.SubstitutionModel;
 import beast.base.evolution.branchratemodel.BranchRateModel;
-import beast.base.evolution.likelihood.BeagleTreeLikelihood.PartialsRescalingScheme;
 import beast.base.evolution.likelihood.GenericTreeLikelihood;
 
 import beagle.Beagle;
@@ -41,13 +40,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
 
     // Input for the origin parameter
     public Input<RealParameter> originInput = new Input<>("origin", "Start of the cell division process, usually start of the experiment.", Input.Validate.REQUIRED);
-    // Input for root frequencies
-    final public Input<Frequencies> rootFrequenciesInput = new Input<>("rootFrequencies", "Prior state frequencies at root, optional", Input.Validate.OPTIONAL);
-    // Different partial likelihood scaling options for numerical stability in BEAGLE calculations.
-    public static enum Scaling {none, always, _default}
-    // Input for scaling type
-    final public Input<Scaling> scaling = new Input<>("scaling", "Type of scaling to use, one of " + Arrays.toString(Scaling.values()) + ". If not specified, the -beagle_scaling flag is used.", 
-            Scaling._default, Scaling.values());
 
     // BEAGLE instance counter
     private static int instanceCount = 0;
@@ -59,12 +51,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
     private static List<Integer> requiredOrder = null;
     // Scaling order list
     private static List<String> scalingOrder = null;
-    // Property name for resource order
-    private static final String RESOURCE_ORDER_PROPERTY = "beagle.resource.order";
-    // Property name for preferred flags
-    private static final String PREFERRED_FLAGS_PROPERTY = "beagle.preferred.flags";
-    // Property name for required flags
-    private static final String REQUIRED_FLAGS_PROPERTY = "beagle.required.flags";
     // Threshold for scaling partials
     private double scalingThreshold = 1.0E-100;
     // Number of states in the model
@@ -133,18 +119,8 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
     protected double[] patternLogLikelihoods;
     // Probability array
     protected double[] probabilities;
-    // Property name for scaling
-    private static final String SCALING_PROPERTY = "beagle.scaling";
-    // Property name for rescale frequency
-    private static final String RESCALE_FREQUENCY_PROPERTY = "beagle.rescale";
-    // Default rescaling scheme
-    private static final PartialsRescalingScheme DEFAULT_RESCALING_SCHEME = PartialsRescalingScheme.DYNAMIC;
-    // Current rescaling scheme
-    private PartialsRescalingScheme rescalingScheme = DEFAULT_RESCALING_SCHEME;
-    // Default rescale frequency
-    private static final int RESCALE_FREQUENCY = 10000;
-    // Current rescale frequency
-    private int rescalingFrequency = RESCALE_FREQUENCY;
+    // Current rescaling frequency
+    private int rescalingFrequency = 10000;
     // Number of times to rescale
     private static final int RESCALE_TIMES = 1;
     // Whether to use scale factors
@@ -252,67 +228,37 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
      */
     @Override
     public double calculateLogP() {
-        // Validate origin if used
+
+        // Do not allow the tree root to be older than the origin 
         if (treeInput.get().getRoot().getHeight() >= originHeight) {
             return Double.NEGATIVE_INFINITY;
         }
+
         // Setup rescaling
-        setupRescaling();
-        // Reset counters
-        resetCounters();
-        // Calculate likelihood
-        return calculateLikelihood();
-    }
-
-    private void setupRescaling() {
         recomputeScaleFactors = false;
-
-        switch (rescalingScheme) {
-            case ALWAYS:
-                useScaleFactors = true;
+        if (everUnderflowed) {
+            useScaleFactors = true;
+            if (rescalingCountInner < RESCALE_TIMES) {
                 recomputeScaleFactors = true;
-                break;
-            case DYNAMIC:
-                if (everUnderflowed) {
-                    useScaleFactors = true;
-                    if (rescalingCountInner < RESCALE_TIMES) {
-                        recomputeScaleFactors = true;
-                        hasDirt = Tree.IS_FILTHY;
-                    }
-                    updateRescalingCounters();
-                }
-                break;
-            case DELAYED:
-                if (everUnderflowed) {
-                    useScaleFactors = true;
-                    recomputeScaleFactors = true;
-                    hasDirt = Tree.IS_FILTHY;
-                    rescalingCount++;
-                }
-                break;
-            default:
-                break;
+                hasDirt = Tree.IS_FILTHY;
+            }
+            // Update rescaling counters
+            rescalingCountInner++;
+            rescalingCount++;
+            if (rescalingCount > rescalingFrequency) {
+                rescalingCount = 0;
+                rescalingCountInner = 0;
+            }
         }
-    }
 
-    private void updateRescalingCounters() {
-        rescalingCountInner++;
-        rescalingCount++;
-        if (rescalingCount > RESCALE_FREQUENCY) {
-            rescalingCount = 0;
-            rescalingCountInner = 0;
-        }
-    }
-
-    private void resetCounters() {
+        // Reset counters
         for (int i = 0; i < eigenCount; i++) {
             branchUpdateCount[i] = 0;
         }
         operationListCount = 0;
         operationCount[0] = 0;
-    }
 
-    private double calculateLikelihood() {
+        // Calculate likelihood
         final Node root = treeInput.get().getRoot();
         traverse(root, true);
 
@@ -321,27 +267,43 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         boolean firstRescaleAttempt = true;
 
         do {
-            logL = calculateSingleLikelihood(root);
-            done = handleUnderflow(logL, root, firstRescaleAttempt);
+            // Update partials in BEAGLE
+            beagle.updatePartials(operations[0], operationCount[0], Beagle.NONE);
+            int rootIndex = partialBufferHelper.getOffsetIndex(root.getNr());
+
+            // Setup frequencies
+            double[] frequencies = substitutionModel.getFrequencies();
+            if (frequencies != currentFreqs) { beagle.setStateFrequencies(0, frequencies); }
+            System.arraycopy(frequencies, 0, currentFreqs, 0, frequencies.length);
+
+            // Calculate likelihood based on origin
+            logL = calculateLikelihoodWithOrigin(root, rootIndex);
+
+            if (Double.isNaN(logL) || Double.isInfinite(logL)) {
+                System.out.println("Likelihood underflow detected: " + logL);
+                everUnderflowed = true;
+                logL = Double.NEGATIVE_INFINITY;
+
+                if (firstRescaleAttempt) {
+                    useScaleFactors = true;
+                    recomputeScaleFactors = true;
+
+                    for (int i = 0; i < eigenCount; i++) {
+                        branchUpdateCount[i] = 0;
+                    }
+
+                    operationCount[0] = 0;
+                    traverse(root, false);
+                    done = false;
+                }
+                done = true;
+            }
+            done = true;
             firstRescaleAttempt = false;
         } while (!done);
 
         logP = logL;
         return logL;
-    }
-
-    private double calculateSingleLikelihood(Node root) {
-        // Update partials in BEAGLE
-        beagle.updatePartials(operations[0], operationCount[0], Beagle.NONE);
-        int rootIndex = partialBufferHelper.getOffsetIndex(root.getNr());
-
-        // Setup frequencies
-        double[] frequencies = rootFrequenciesInput.get() == null ? substitutionModel.getFrequencies() : rootFrequenciesInput.get().getFreqs();
-        if (frequencies != currentFreqs) { beagle.setStateFrequencies(0, frequencies); }
-        System.arraycopy(frequencies, 0, currentFreqs, 0, frequencies.length);
-
-        // Calculate likelihood based on origin
-        return root.getHeight() != originHeight ? calculateLikelihoodWithOrigin(root, rootIndex) : calculateStandardLikelihood(rootIndex);
     }
 
 
@@ -386,13 +348,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         double finalLogL = sumLogLikelihoods[0] + originScaleFactorsSum;
 
         return finalLogL;
-    }
-
-    private double calculateStandardLikelihood(int rootIndex) {
-        double[] sumLogLikelihoods = new double[1];
-        int cumulateScaleBufferIndex = getScaleBufferIndex();
-        beagle.calculateRootLogLikelihoods(new int[]{rootIndex}, new int[]{0}, new int[]{0}, new int[]{cumulateScaleBufferIndex}, 1, sumLogLikelihoods);
-        return sumLogLikelihoods[0];
     }
 
     private double[] getRootPartials(int rootIndex) {
@@ -443,35 +398,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         for (int j = 0; j < m_nStateCount; j++) {
             originPartials[startIndex + j] /= scaleFactor;
         }
-    }
-
-
-    private boolean handleUnderflow(double logL, Node root, boolean firstRescaleAttempt) {
-        if (Double.isNaN(logL) || Double.isInfinite(logL)) {
-            everUnderflowed = true;
-            logL = Double.NEGATIVE_INFINITY;
-
-            if (firstRescaleAttempt && 
-                (rescalingScheme == PartialsRescalingScheme.DYNAMIC || 
-                 rescalingScheme == PartialsRescalingScheme.DELAYED)) {
-                return handleRescalingAttempt(root);
-            }
-            return true;
-        }
-        return true;
-    }
-
-    private boolean handleRescalingAttempt(Node root) {
-        useScaleFactors = true;
-        recomputeScaleFactors = true;
-
-        for (int i = 0; i < eigenCount; i++) {
-            branchUpdateCount[i] = 0;
-        }
-
-        operationCount[0] = 0;
-        traverse(root, false);
-        return false;
     }
 
 
@@ -855,39 +781,10 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
     }
 
     private void loadSystemProperties() {
-        if (resourceOrder == null) {
-            resourceOrder = parseSystemPropertyIntegerArray(RESOURCE_ORDER_PROPERTY);
-        }
-        if (preferredOrder == null) {
-            preferredOrder = parseSystemPropertyIntegerArray(PREFERRED_FLAGS_PROPERTY);
-        }
-        if (requiredOrder == null) {
-            requiredOrder = parseSystemPropertyIntegerArray(REQUIRED_FLAGS_PROPERTY);
-        }
-        if (scalingOrder == null) {
-            scalingOrder = parseSystemPropertyStringArray(SCALING_PROPERTY);
-        }
-
-        // Configure rescaling scheme
-        rescalingScheme = DEFAULT_RESCALING_SCHEME;
-        
-        if (scalingOrder.size() > 0) {
-            rescalingScheme = PartialsRescalingScheme.parseFromString(
-                    scalingOrder.get(instanceCount % scalingOrder.size()));
-        }
-
-        if (scaling.get().equals(Scaling.always)) {
-            rescalingScheme = PartialsRescalingScheme.ALWAYS;
-        } else if (scaling.get().equals(Scaling.none)) {
-            rescalingScheme = PartialsRescalingScheme.NONE;
-        }
-
-        // Set default behavior based on resource type
-        if (rescalingScheme == PartialsRescalingScheme.DEFAULT) {
-            int[] resourceList = getResourceList();
-            rescalingScheme = (resourceList != null && resourceList[0] > 1) ? 
-                    PartialsRescalingScheme.NONE : PartialsRescalingScheme.DYNAMIC;
-        }
+        resourceOrder = parseSystemPropertyIntegerArray("beagle.resource.order");
+        preferredOrder = parseSystemPropertyIntegerArray("beagle.preferred.flags");
+        requiredOrder = parseSystemPropertyIntegerArray("beagle.required.flags");
+        scalingOrder = parseSystemPropertyStringArray("beagle.scaling");
     }
 
     private int[] getResourceList() {
@@ -960,11 +857,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         
         if (preferredOrder.size() > 0) {
             flags = preferredOrder.get(instanceCount % preferredOrder.size());
-        }
-        
-        if (rescalingScheme == PartialsRescalingScheme.AUTO) {
-            flags |= BeagleFlag.SCALING_AUTO.getMask();
-            useAutoScaling = true;
         }
         
         if (flags == 0 && resourceList == null && m_nStateCount == 4 && patternCount < 10000) {
@@ -1040,37 +932,6 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
             int[] tmp = storedIndexOffsets;
             storedIndexOffsets = indexOffsets;
             indexOffsets = tmp;
-        }
-    }
-
-    /**
-     * Enumeration defining different schemes for rescaling partial likelihoods in BEAGLE.
-     */
-    public enum PartialsRescalingScheme {
-        DEFAULT("default"),
-        NONE("none"),
-        DYNAMIC("dynamic"),
-        ALWAYS("always"),
-        DELAYED("delayed"),
-        AUTO("auto");
-
-        private final String text;
-
-        PartialsRescalingScheme(String text) {
-            this.text = text;
-        }
-
-        public String getText() {
-            return text;
-        }
-
-        public static PartialsRescalingScheme parseFromString(String text) {
-            for (PartialsRescalingScheme scheme : values()) {
-                if (scheme.getText().compareToIgnoreCase(text) == 0) {
-                    return scheme;
-                }
-            }
-            return DEFAULT;
         }
     }
 }

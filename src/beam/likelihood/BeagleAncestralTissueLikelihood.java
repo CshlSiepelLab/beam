@@ -187,7 +187,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
             if (node.isRoot()) {
                 // Handle a root node without origin
                 beagle.getPartials(partialBufferHelper.getOffsetIndex(node.getNr()), Beagle.NONE, conditionalProbabilities);
-                double[] rootFrequencies = rootFrequenciesInput.get() == null ? substitutionModel.getFrequencies() : rootFrequenciesInput.get().getFreqs();
+                double[] rootFrequencies = substitutionModel.getFrequencies();
                 for (int i = 0; i < stateCount; i++) {
                         conditionalProbabilities[i] *= rootFrequencies[i];
                     }
@@ -201,7 +201,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
                     // Handle root node (below origin) when origin is present since the origin is not physically in the tree
                     double[] oPs = new double[m_nStateCount];
                     System.arraycopy(originPartials, 0, oPs, 0, originPartials.length);
-                    double[] rootFrequencies = rootFrequenciesInput.get() == null ? substitutionModel.getFrequencies() : rootFrequenciesInput.get().getFreqs();
+                    double[] rootFrequencies = substitutionModel.getFrequencies();
                     for (int i = 0; i < stateCount; i++) {
                         oPs[i] *= rootFrequencies[i];
                     }
