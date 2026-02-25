@@ -9,7 +9,7 @@
 
     <!-- Likelihood-related providers -->
     <provider classname="beam.likelihood.IrreversibleTreeLikelihood"/>
-    <provider classname="beam.likelihood.BeamBeagleTreeLikelihood"/>
+    <provider classname="beam.likelihood.BeagleTissueLikelihood"/>
     <provider classname="beam.likelihood.BeagleAncestralTissueLikelihood"/>
 
     <!-- Substitution model providers -->

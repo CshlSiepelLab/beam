@@ -31,7 +31,7 @@ import beastclassic.evolution.likelihood.LeafTrait;
  * @author Stephen Staklinski
  */
 @Description("Ancestral State Tree Likelihood that extends the custom Beagle likelihood with origin input for the branch above the root.")
-public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood implements TreeTraitProvider {
+public class BeagleAncestralTissueLikelihood extends BeagleTissueLikelihood implements TreeTraitProvider {
 
     // Key for states trait
     public static final String STATES_KEY = "states";
@@ -64,7 +64,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
     public void initAndValidate() {
         super.initAndValidate();
 
-        if (dataInput.get().getPatternCount() != 1 || m_siteModel.getCategoryCount() > 1) {
+        if (dataInput.get().getSiteCount() != 1 || m_siteModel.getCategoryCount() > 1) {
             throw new RuntimeException("Only single-site data and no site rate categories are supported, meaning only one tissue per tip is allowed.");
         }
 
@@ -80,7 +80,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
         tipStates = new int[treeModel.getLeafNodeCount()];
         for (Node node : treeModel.getExternalNodes()) {
             String taxon = node.getID();
-            int taxonIndex = getTaxonIndex(data, taxon);
+            int taxonIndex = data.getTaxonIndex(taxon);;
             int code = data.getPattern(taxonIndex, 0);
             tipStates[node.getNr()] = data.getDataType().getStatesForCode(code)[0];
         }
@@ -105,43 +105,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
         });
     }
 
-
-    private int getTaxonIndex(Alignment data, String taxon) {
-        int i = data.getTaxonIndex(taxon);
-        if (i >= 0) return i;
-
-        if ((taxon.startsWith("'") || taxon.startsWith("\""))) {
-            // Try stripping quotes from name
-            i = data.getTaxonIndex(taxon.substring(1, taxon.length() - 1));
-        }
-        if (i < 0) {
-            throw new RuntimeException("Sequence not found: " + taxon);
-        }
-        return i;
-    }
-
-
-    @Override
-    public void store() {
-        super.store();
-        System.arraycopy(reconstructedStates, 0, storedReconstructedStates, 0, reconstructedStates.length);
-        storedAreStatesRedrawn = areStatesRedrawn;
-    }
-
-    @Override
-    public void restore() {
-        super.restore();
-        System.arraycopy(storedReconstructedStates, 0, reconstructedStates, 0, storedReconstructedStates.length);
-        areStatesRedrawn = storedAreStatesRedrawn;
-    }
-
-    /**
-     * Gets the state for a given node in the tree.
-     *
-     * @param tree The tree to get state from
-     * @param node The node to get state for
-     * @return The state for the node
-     */
+    // Gets the state for a given node in the tree.
     public int getStateForNode(TreeInterface tree, Node node) {
         if (!areStatesRedrawn) {
             traverseSample(tree, tree.getRoot(), -1);
@@ -158,26 +122,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
         return logP;
     }
 
-
-    @Override
-    public TreeTrait[] getTreeTraits() {
-        return treeTraits.getTreeTraits();
-    }
-
-
-    @Override
-    public TreeTrait getTreeTrait(String key) {
-        return treeTraits.getTreeTrait(key);
-    }
-
-
-    /**
-     * Traverses the tree in pre-order to sample internal node states.
-     *
-     * @param tree The tree to traverse
-     * @param node The current node
-     * @param parentState The state of the parent node
-     */
+    // Traverses the tree in pre-order to sample internal node states
     public void traverseSample(TreeInterface tree, Node node, int parentState) {
         int nodeNum = node.getNr();
         Node parent = node.getParent();
@@ -234,6 +179,31 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
             // Handle leaf node where tissue is known
             reconstructedStates[node.getNr()] = tipStates[node.getNr()];
         }
+    }
+
+    @Override
+    public void store() {
+        super.store();
+        System.arraycopy(reconstructedStates, 0, storedReconstructedStates, 0, reconstructedStates.length);
+        storedAreStatesRedrawn = areStatesRedrawn;
+    }
+
+    @Override
+    public void restore() {
+        super.restore();
+        System.arraycopy(storedReconstructedStates, 0, reconstructedStates, 0, storedReconstructedStates.length);
+        areStatesRedrawn = storedAreStatesRedrawn;
+    }
+
+    @Override
+    public TreeTrait[] getTreeTraits() {
+        return treeTraits.getTreeTraits();
+    }
+
+
+    @Override
+    public TreeTrait getTreeTrait(String key) {
+        return treeTraits.getTreeTrait(key);
     }
 
 }
