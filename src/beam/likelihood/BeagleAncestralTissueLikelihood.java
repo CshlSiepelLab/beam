@@ -124,18 +124,14 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
     @Override
     public void store() {
         super.store();
-        int[] tmp = storedReconstructedStates;
-        storedReconstructedStates = reconstructedStates;
-        reconstructedStates = tmp;
+        System.arraycopy(reconstructedStates, 0, storedReconstructedStates, 0, reconstructedStates.length);
         storedAreStatesRedrawn = areStatesRedrawn;
     }
 
     @Override
     public void restore() {
         super.restore();
-        int[] tmp = reconstructedStates;
-        reconstructedStates = storedReconstructedStates;
-        storedReconstructedStates = tmp;
+        System.arraycopy(storedReconstructedStates, 0, reconstructedStates, 0, storedReconstructedStates.length);
         areStatesRedrawn = storedAreStatesRedrawn;
     }
 
@@ -188,7 +184,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
         double[] conditionalProbabilities = new double[stateCount];
 
         if (!node.isLeaf()) {
-            if (parent == null && !useOrigin) {
+            if (node.isRoot()) {
                 // Handle a root node without origin
                 beagle.getPartials(partialBufferHelper.getOffsetIndex(node.getNr()), Beagle.NONE, conditionalProbabilities);
                 double[] rootFrequencies = rootFrequenciesInput.get() == null ? substitutionModel.getFrequencies() : rootFrequenciesInput.get().getFreqs();
@@ -201,7 +197,7 @@ public class BeagleAncestralTissueLikelihood extends BeamBeagleTreeLikelihood im
                 double[] partialLikelihood = new double[stateCount];
                 beagle.getPartials(partialBufferHelper.getOffsetIndex(node.getNr()), Beagle.NONE, partialLikelihood);
 
-                if (parent == null && useOrigin) {
+                if (node.isRoot()) {
                     // Handle root node (below origin) when origin is present since the origin is not physically in the tree
                     double[] oPs = new double[m_nStateCount];
                     System.arraycopy(originPartials, 0, oPs, 0, originPartials.length);

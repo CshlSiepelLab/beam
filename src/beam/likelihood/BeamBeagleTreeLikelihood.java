@@ -40,19 +40,15 @@ import beagle.ResourceDetails;
 public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
 
     // Input for the origin parameter
-    public Input<RealParameter> originInput = new Input<>("origin", "Start of the cell division process, usually start of the experiment.", Input.Validate.OPTIONAL);
+    public Input<RealParameter> originInput = new Input<>("origin", "Start of the cell division process, usually start of the experiment.", Input.Validate.REQUIRED);
     // Input for root frequencies
     final public Input<Frequencies> rootFrequenciesInput = new Input<>("rootFrequencies", "Prior state frequencies at root, optional", Input.Validate.OPTIONAL);
-    //Different partial likelihood scaling options for numerical stability in BEAGLE calculations.
+    // Different partial likelihood scaling options for numerical stability in BEAGLE calculations.
     public static enum Scaling {none, always, _default}
     // Input for scaling type
     final public Input<Scaling> scaling = new Input<>("scaling", "Type of scaling to use, one of " + Arrays.toString(Scaling.values()) + ". If not specified, the -beagle_scaling flag is used.", 
             Scaling._default, Scaling.values());
 
-    // Origin parameter
-    protected RealParameter origin;
-    // Whether to use origin node
-    protected boolean useOrigin = false;
     // BEAGLE instance counter
     private static int instanceCount = 0;
     // Resource order list
@@ -167,6 +163,8 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
     private int[] scaleBufferIndices;
     // Stored scale buffer indices
     private int[] storedScaleBufferIndices;
+    // Origin height
+    protected Double originHeight;
 
     @Override
     public void initAndValidate() { initialize(); }
@@ -177,10 +175,7 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
      */
     private void initialize() {
         // Setup origin
-        if (originInput.get() != null) {
-            origin = originInput.get();
-            useOrigin = true;
-        }
+        originHeight = originInput.get().getValue();
 
         // Setup models
         // Validate and setup site model
@@ -229,15 +224,22 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         storedBranchLengths = new double[m_nNodeCount];
         // Set eigen count
         eigenCount = 1;
-        // Setup origin-specific arrays if needed
-        if (useOrigin) {
-            // Setup origin arrays
-            int partialsSize = patternCount * m_nStateCount;
-            originPartials = new double[partialsSize];
-            storedOriginPartials = new double[partialsSize];
-            rootTransitionMatrix = new double[matrixDimensions];
-            storedRootTransitionMatrix = new double[matrixDimensions];
-        }
+        // Setup origin arrays
+        int partialsSize = patternCount * m_nStateCount;
+        originPartials = new double[partialsSize];
+        storedOriginPartials = new double[partialsSize];
+        rootTransitionMatrix = new double[matrixDimensions];
+        storedRootTransitionMatrix = new double[matrixDimensions];
+
+        // Initialize other arrays
+        patternLogLikelihoods = new double[patternCount];
+        matrixUpdateIndices = new int[eigenCount][m_nNodeCount];
+        branchLengths = new double[eigenCount][m_nNodeCount];
+        branchUpdateCount = new int[eigenCount];
+        scaleBufferIndices = new int[internalNodeCount];
+        storedScaleBufferIndices = new int[internalNodeCount];
+        operations = new int[1][internalNodeCount * Beagle.OPERATION_TUPLE_SIZE];
+        operationCount = new int[1];
 
         // Setup BEAGLE
         setupBeagle();
@@ -251,45 +253,15 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
     @Override
     public double calculateLogP() {
         // Validate origin if used
-        if (useOrigin && !validateOrigin()) {
+        if (treeInput.get().getRoot().getHeight() >= originHeight) {
             return Double.NEGATIVE_INFINITY;
         }
-        // Initialize arrays if needed
-        initializeArrays();
         // Setup rescaling
         setupRescaling();
         // Reset counters
         resetCounters();
         // Calculate likelihood
         return calculateLikelihood();
-    }
-
-
-    private boolean validateOrigin() {
-        Double originHeight = origin.getValue();
-        if (treeInput.get().getRoot().getHeight() >= originHeight) {
-            return false;
-        }
-        return true;
-    }
-
-    private void initializeArrays() {
-        if (patternLogLikelihoods == null) {
-            patternLogLikelihoods = new double[patternCount];
-        }
-
-        if (matrixUpdateIndices == null) {
-            matrixUpdateIndices = new int[eigenCount][m_nNodeCount];
-            branchLengths = new double[eigenCount][m_nNodeCount];
-            branchUpdateCount = new int[eigenCount];
-            scaleBufferIndices = new int[internalNodeCount];
-            storedScaleBufferIndices = new int[internalNodeCount];
-        }
-
-        if (operations == null) {
-            operations = new int[1][internalNodeCount * Beagle.OPERATION_TUPLE_SIZE];
-            operationCount = new int[1];
-        }
     }
 
     private void setupRescaling() {
@@ -369,7 +341,7 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         System.arraycopy(frequencies, 0, currentFreqs, 0, frequencies.length);
 
         // Calculate likelihood based on origin
-        return useOrigin && root.getHeight() != origin.getValue() ? calculateLikelihoodWithOrigin(root, rootIndex) : calculateStandardLikelihood(rootIndex);
+        return root.getHeight() != originHeight ? calculateLikelihoodWithOrigin(root, rootIndex) : calculateStandardLikelihood(rootIndex);
     }
 
 
@@ -433,7 +405,7 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         int rootNodeNum = root.getNr();
         double br = branchRateModel.getRateForBranch(root);
 
-        substitutionModel.getTransitionProbabilities(root, origin.getValue(), root.getHeight(), br, probabilities);
+        substitutionModel.getTransitionProbabilities(root, originHeight, root.getHeight(), br, probabilities);
         System.arraycopy(probabilities, 0, rootTransitionMatrix, 0, matrixDimensions);
     }
 
@@ -687,14 +659,11 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
             System.arraycopy(scaleBufferIndices, 0, storedScaleBufferIndices, 0, scaleBufferIndices.length);
         }
 
-        if (useOrigin) {
-            // store origin partials
-            System.arraycopy(originPartials, 0, storedOriginPartials, 0, originPartials.length);
+        // store origin partials
+        System.arraycopy(originPartials, 0, storedOriginPartials, 0, originPartials.length);
+        // Store root to origin branch transition matrix
+        System.arraycopy(rootTransitionMatrix, 0, storedRootTransitionMatrix, 0, rootTransitionMatrix.length);
 
-            // Store root to origin branch transition matrix
-            System.arraycopy(rootTransitionMatrix, 0, storedRootTransitionMatrix, 0, rootTransitionMatrix.length);
-
-        }
         // Store logP and reset isDirty to false
         super.store();
 
@@ -714,20 +683,13 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
 
         if (useScaleFactors || useAutoScaling) {
             scaleBufferHelper.restoreState();
-            int[] tmp2 = storedScaleBufferIndices;
-            storedScaleBufferIndices = scaleBufferIndices;
-            scaleBufferIndices = tmp2;
+            System.arraycopy(storedScaleBufferIndices, 0, scaleBufferIndices, 0, storedScaleBufferIndices.length);
         }
 
-        if (useOrigin) {
-            // restore origin partials
-            double[] tmp3 = storedOriginPartials;
-            storedOriginPartials = originPartials;
-            originPartials = tmp3;
-
-            // Restore root to origin branch transition matrix
-            System.arraycopy(storedRootTransitionMatrix, 0, rootTransitionMatrix, 0, rootTransitionMatrix.length);
-        }
+        // restore origin partials
+        System.arraycopy(storedOriginPartials, 0, originPartials, 0, originPartials.length);
+        // Restore root to origin branch transition matrix
+        System.arraycopy(storedRootTransitionMatrix, 0, rootTransitionMatrix, 0, rootTransitionMatrix.length);
 
 
         // Restore logP and reset isDirty to false
@@ -737,9 +699,7 @@ public class BeamBeagleTreeLikelihood extends GenericTreeLikelihood {
         super.restore(); 
 
         // restore branch lengths
-        double[] tmp = storedBranchLengths;
-        storedBranchLengths = m_branchLengths;
-        m_branchLengths = tmp;
+        System.arraycopy(storedBranchLengths, 0, m_branchLengths, 0, m_branchLengths.length);
     }
 
     private static List<Integer> parseSystemPropertyIntegerArray(String propertyName) {
