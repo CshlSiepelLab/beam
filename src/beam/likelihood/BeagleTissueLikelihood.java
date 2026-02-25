@@ -13,16 +13,20 @@ import beast.base.inference.CalculationNode;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.evolution.alignment.Alignment;
 import beast.base.evolution.sitemodel.SiteModel;
-import beast.base.evolution.substitutionmodel.EigenDecomposition;
-import beast.base.evolution.substitutionmodel.Frequencies;
 import beast.base.evolution.substitutionmodel.SubstitutionModel;
 import beast.base.evolution.branchratemodel.BranchRateModel;
 import beast.base.evolution.likelihood.GenericTreeLikelihood;
+import beast.base.evolution.datatype.DataType;
+import beastclassic.evolution.tree.TreeTrait;
+import beastclassic.evolution.tree.TreeTraitProvider;
+import beast.base.evolution.tree.TreeInterface;
+import beast.base.util.Randomizer;
 
 import beagle.Beagle;
 import beagle.BeagleFactory;
 import beagle.BeagleFlag;
 import beagle.BeagleInfo;
+
 
 /**
  * Uses the BEAGLE library to calculate the tissue likelihood including the origin node.
@@ -30,21 +34,21 @@ import beagle.BeagleInfo;
  * @author Stephen Staklinski
  */
 @Description("Uses the beagle library to calculate the tissue likelihood including the origin node.")
-public class BeagleTissueLikelihood extends GenericTreeLikelihood {
+public class BeagleTissueLikelihood extends GenericTreeLikelihood implements TreeTraitProvider {
 
     // Input for the origin parameter
     public Input<RealParameter> originInput = new Input<>("origin", "Start of the cell division process, usually start of the experiment.", Input.Validate.REQUIRED);
+    // Input for the label used for tissues written to posterior samples
+    public Input<String> tagInput = new Input<>("tag", "label used to report trait in the output tree posterior samples. Default is location.", "location", Input.Validate.OPTIONAL);
 
-    // BEAGLE instance counter
-    private static int instanceCount = 0;
     // Preferred flags list
     private static List<Integer> preferredOrder = null;
     // Threshold for scaling partials
     private double scalingThreshold = 1.0E-100;
     // Number of states in the model
-    int m_nStateCount;
+    int stateCount;
     // Number of nodes in the tree
-    int m_nNodeCount;
+    int nodeCount;
     // Dimensions of the transition matrix
     int matrixDimensions;
     // Transition matrices
@@ -59,10 +63,8 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
     private int[] branchUpdateCount;
     // Operations array
     private int[][] operations;
-    // Operation list count
-    private int operationListCount;
     // Operation counts
-    private int[] operationCount;
+    private int operationCount;
     // Buffer index helper for partials
     protected BufferIndexHelper partialBufferHelper;
     // Buffer index helper for eigen values
@@ -77,8 +79,6 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
     protected int internalNodeCount;
     // Number of patterns
     protected int siteCount;
-    // Number of categories
-    protected int categoryCount;
     // BEAGLE instance
     protected Beagle beagle;
     // Partial likelihoods for origin node
@@ -98,7 +98,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
     // Substitution model
     protected SubstitutionModel substitutionModel;
     // Site model
-    protected SiteModel.Base m_siteModel;
+    protected SiteModel.Base siteModel;
     // Branch rate model
     protected BranchRateModel.Base branchRateModel;
     // Pattern log likelihoods
@@ -127,31 +127,39 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
     private int[] storedScaleBufferIndices;
     // Origin height
     protected Double originHeight;
+    // Key for states trait
+    public static final String STATES_KEY = "states";
+    // Data type for the alignment
+    protected DataType dataType;
+    // Reconstructed states for each node
+    private int[] reconstructedStates;
+    // Stored reconstructed states for store/restore operations
+    private int[] storedReconstructedStates;
+    // Tag label for trait reporting
+    private String tag;
+    // Flag indicating if states have been redrawn
+    private boolean areStatesRedrawn = false;
+    // Stored flag for states redrawn status
+    private boolean storedAreStatesRedrawn = false;
+    // States at tip nodes
+    private int[] tipStates;
+    // Helper for tree traits
+    protected TreeTraitProvider.Helper treeTraits = new Helper();
 
     @Override
-    public void initAndValidate() { initialize(); }
-
-
-    /**
-     * Initializes the BEAGLE instance and sets up necessary data structures.
-     */
-    private void initialize() {
-        // Setup origin
-        originHeight = originInput.get().getValue();
-
-        // Setup models
+    public void initAndValidate() {
         // Validate and setup site model
         if (!(siteModelInput.get() instanceof SiteModel.Base)) {
             throw new IllegalArgumentException("siteModel input should be of type SiteModel.Base");
         }
-        m_siteModel = (SiteModel.Base) siteModelInput.get();
-        m_siteModel.setDataType(dataInput.get().getDataType());
+        siteModel = (SiteModel.Base) siteModelInput.get();
+        siteModel.setDataType(dataInput.get().getDataType());
         // Validate site categories
-        if (m_siteModel.getCategoryRates(null).length != 1) {
+        if (siteModel.getCategoryCount() > 1) {
             throw new IllegalArgumentException("Site categories are not supported in the current implementation.");
         }
         // Validate and setup substitution model
-        substitutionModel = (SubstitutionModel.Base) m_siteModel.substModelInput.get();
+        substitutionModel = (SubstitutionModel.Base) siteModel.substModelInput.get();
         if (!substitutionModel.canReturnComplexDiagonalization()) {
             throw new IllegalArgumentException("Substitution model must be able to return transition probabilities.");
         }
@@ -161,29 +169,33 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             throw new IllegalArgumentException("Branch rate model must be specified in the current implementation.");
         }
 
-        // Setup state counts
-        // Get state count and pattern count
-        m_nStateCount = substitutionModel.getStateCount();
+        // Get state count and site count
+        stateCount = substitutionModel.getStateCount();
         siteCount = dataInput.get().getSiteCount();
+        if (siteCount > 1) {
+            throw new RuntimeException("Only one tissue per tip is allowed.");
+        }
+
+        // Setup origin
+        originHeight = originInput.get().getValue();
 
         // Setup arrays
         // Initialize frequency array
-        currentFreqs = new double[m_nStateCount];
-        // Setup category count and matrix dimensions
-        categoryCount = m_siteModel.getCategoryCount();
-        matrixDimensions = m_nStateCount * m_nStateCount;
+        currentFreqs = new double[stateCount];
+        // Setup matrices
+        matrixDimensions = stateCount * stateCount;
         // Initialize probability arrays
         probabilities = new double[matrixDimensions];
-        matrices = new double[matrixDimensions * categoryCount];
+        matrices = new double[matrixDimensions];
         // Setup tree node counts
-        m_nNodeCount = treeInput.get().getNodeCount();
+        nodeCount = treeInput.get().getNodeCount();
         tipCount = treeInput.get().getLeafNodeCount();
-        internalNodeCount = m_nNodeCount - tipCount;
+        internalNodeCount = nodeCount - tipCount;
         // Initialize branch length arrays
-        m_branchLengths = new double[m_nNodeCount];
-        storedBranchLengths = new double[m_nNodeCount];
+        m_branchLengths = new double[nodeCount];
+        storedBranchLengths = new double[nodeCount];
         // Setup origin arrays
-        int partialsSize = siteCount * m_nStateCount;
+        int partialsSize = siteCount * stateCount;
         originPartials = new double[partialsSize];
         storedOriginPartials = new double[partialsSize];
         rootTransitionMatrix = new double[matrixDimensions];
@@ -191,16 +203,51 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
 
         // Initialize other arrays
         patternLogLikelihoods = new double[siteCount];
-        matrixUpdateIndices = new int[1][m_nNodeCount];
-        branchLengths = new double[1][m_nNodeCount];
+        matrixUpdateIndices = new int[1][nodeCount];
+        branchLengths = new double[1][nodeCount];
         branchUpdateCount = new int[1];
         scaleBufferIndices = new int[internalNodeCount];
         storedScaleBufferIndices = new int[internalNodeCount];
         operations = new int[1][internalNodeCount * Beagle.OPERATION_TUPLE_SIZE];
-        operationCount = new int[1];
+        operationCount = 0;
 
         // Setup BEAGLE
         setupBeagle();
+
+        // Initialize data structures for tissues
+        tag = tagInput.get();
+        Alignment data = dataInput.get();
+        dataType = data.getDataType();
+        stateCount = dataType.getStateCount();
+        TreeInterface treeModel = treeInput.get();
+
+        // Initialize tip states
+        tipStates = new int[tipCount];
+        for (Node node : treeModel.getExternalNodes()) {
+            String taxon = node.getID();
+            int taxonIndex = data.getTaxonIndex(taxon);;
+            int code = data.getPattern(taxonIndex, 0);
+            tipStates[node.getNr()] = data.getDataType().getStatesForCode(code)[0];
+        }
+
+        // Initialize reconstructed tissue states arrays
+        reconstructedStates = new int[nodeCount];
+        storedReconstructedStates = new int[nodeCount];
+        
+        // Initialize the input observed tissue state for each tip in the tree
+        treeTraits.addTrait(STATES_KEY, new TreeTrait.IA() {
+            @Override
+            public String getTraitName() { return tag; }
+
+            @Override
+            public Intent getIntent() { return Intent.NODE; }
+
+            @Override
+            public int[] getTrait(TreeInterface tree, Node node) { return new int[] { getStateForNode(tree, node) }; }
+
+            @Override
+            public String getTraitString(TreeInterface tree, Node node) { return "\"" + dataType.getCode(getStateForNode(tree, node)) + "\""; }
+        });
     }
 
     // Calculate the log likelihood of the current state.
@@ -233,20 +280,17 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
         for (int i = 0; i < 1; i++) {
             branchUpdateCount[i] = 0;
         }
-        operationListCount = 0;
-        operationCount[0] = 0;
+        operationCount = 0;
 
         // Calculate likelihood
         final Node root = treeInput.get().getRoot();
         traverse(root, true);
 
-        double logL;
         boolean done;
         boolean firstRescaleAttempt = true;
-
         do {
             // Update partials in BEAGLE
-            beagle.updatePartials(operations[0], operationCount[0], Beagle.NONE);
+            beagle.updatePartials(operations[0], operationCount, Beagle.NONE);
             int rootIndex = partialBufferHelper.getOffsetIndex(root.getNr());
 
             // Setup frequencies
@@ -255,11 +299,11 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             System.arraycopy(frequencies, 0, currentFreqs, 0, frequencies.length);
 
             // Calculate likelihood based on origin
-            logL = calculateLikelihoodWithOrigin(root, rootIndex);
+            logP = calculateLikelihoodWithOrigin(root, rootIndex);
 
-            if (Double.isNaN(logL) || Double.isInfinite(logL)) {
+            if (Double.isNaN(logP) || Double.isInfinite(logP)) {
                 everUnderflowed = true;
-                logL = Double.NEGATIVE_INFINITY;
+                logP = Double.NEGATIVE_INFINITY;
 
                 if (firstRescaleAttempt) {
                     useScaleFactors = true;
@@ -269,7 +313,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
                         branchUpdateCount[i] = 0;
                     }
 
-                    operationCount[0] = 0;
+                    operationCount = 0;
                     traverse(root, false);
                     done = false;
                 }
@@ -279,8 +323,8 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             firstRescaleAttempt = false;
         } while (!done);
 
-        logP = logL;
-        return logL;
+        areStatesRedrawn = false;   // Reset flag for ancestral state sampling
+        return logP;
     }
 
 
@@ -301,7 +345,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
 
     private double calculateLikelihoodWithOrigin(Node root, int rootIndex) {
         // Get root partials
-        double[] rootPartials = new double[siteCount * m_nStateCount];
+        double[] rootPartials = new double[siteCount * stateCount];
         beagle.getPartials(rootIndex, Beagle.NONE, rootPartials);
 
         // Setup root transition matrix
@@ -347,7 +391,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             } else {
                 originScaleFactors[i] = 0.0;
             }
-            u += m_nStateCount;
+            u += stateCount;
         }
 
         return Arrays.stream(originScaleFactors).sum();
@@ -355,14 +399,14 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
 
     private double calculateScaleFactor(int pattern, int startIndex) {
         double scaleFactor = 0.0;
-        for (int j = 0; j < m_nStateCount; j++) {
+        for (int j = 0; j < stateCount; j++) {
             scaleFactor = Math.max(scaleFactor, originPartials[startIndex + j]);
         }
         return scaleFactor;
     }
 
     private void applyScaleFactor(int pattern, int startIndex, double scaleFactor) {
-        for (int j = 0; j < m_nStateCount; j++) {
+        for (int j = 0; j < stateCount; j++) {
             originPartials[startIndex + j] /= scaleFactor;
         }
     }
@@ -433,14 +477,14 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             // If either child node was dirty, then update the parent node
             if (update1 != Tree.IS_CLEAN || update2 != Tree.IS_CLEAN) {
 
-                int x = operationCount[operationListCount] * Beagle.OPERATION_TUPLE_SIZE;
+                int x = operationCount * Beagle.OPERATION_TUPLE_SIZE;
 
                 // Flip places a flag to calculate these values later in beagle updatePartials()
                 if (flip) {
                     partialBufferHelper.flipOffset(nodeNum);
                 }
 
-                final int[] operations = this.operations[operationListCount];
+                final int[] operations = this.operations[0];
                 operations[x] = partialBufferHelper.getOffsetIndex(nodeNum);
 
                 if (useScaleFactors) {
@@ -476,7 +520,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
                 operations[x + 5] = partialBufferHelper.getOffsetIndex(child2.getNr()); // source node 2
                 operations[x + 6] = matrixBufferHelper.getOffsetIndex(child2.getNr()); // source matrix 2
 
-                operationCount[operationListCount]++;
+                operationCount++;
 
                 update |= (update1 | update2);
             }
@@ -492,16 +536,16 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
 
         for (int k = 0; k < siteCount; k++) {
             int w = 0;
-            for (int i = 0; i < m_nStateCount; i++) {
+            for (int i = 0; i < stateCount; i++) {
                 sum1 = 0.0;
-                for (int j = 0; j < m_nStateCount; j++) {
+                for (int j = 0; j < stateCount; j++) {
                     sum1 += matrices1[w] * partials1[v + j];
                     w++;
                 }
                 partials3[u] = sum1;
                 u++;
             }
-            v += m_nStateCount;
+            v += stateCount;
         }
 
         return partials3;
@@ -524,7 +568,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             hasDirt = Tree.IS_FILTHY;
             return true;
         }
-        if (m_siteModel.isDirtyCalculation()) {
+        if (siteModel.isDirtyCalculation()) {
             hasDirt = Tree.IS_DIRTY;
             return true;
         }
@@ -550,7 +594,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             System.arraycopy(scaleBufferIndices, 0, storedScaleBufferIndices, 0, scaleBufferIndices.length);
         }
 
-        // store origin partials
+        // Store origin partials
         System.arraycopy(originPartials, 0, storedOriginPartials, 0, originPartials.length);
         // Store root to origin branch transition matrix
         System.arraycopy(rootTransitionMatrix, 0, storedRootTransitionMatrix, 0, rootTransitionMatrix.length);
@@ -558,8 +602,12 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
         // Store logP and reset isDirty to false
         super.store();
 
-        // store branch lengths
+        // Store branch lengths
         System.arraycopy(m_branchLengths, 0, storedBranchLengths, 0, m_branchLengths.length);
+
+        // Store ancestral states
+        System.arraycopy(reconstructedStates, 0, storedReconstructedStates, 0, reconstructedStates.length);
+        storedAreStatesRedrawn = areStatesRedrawn;
     }
 
     /**
@@ -589,8 +637,12 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
         // Reset isDirty to false
         super.restore(); 
 
-        // restore branch lengths
+        // Restore branch lengths
         System.arraycopy(storedBranchLengths, 0, m_branchLengths, 0, m_branchLengths.length);
+
+        // Restore ancestral states
+        System.arraycopy(storedReconstructedStates, 0, reconstructedStates, 0, storedReconstructedStates.length);
+        areStatesRedrawn = storedAreStatesRedrawn;
     }
 
     private static List<Integer> parseSystemPropertyIntegerArray(String propertyName) {
@@ -610,69 +662,22 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
         return order;
     }
 
-
-    private static List<String> parseSystemPropertyStringArray(String propertyName) {
-        List<String> order = new ArrayList<>();
-        String r = System.getProperty(propertyName);
-        if (r != null) {
-            String[] parts = r.split(",");
-            for (String part : parts) {
-                try {
-                    String s = part.trim();
-                    order.add(s);
-                } catch (NumberFormatException nfe) {
-                	Log.warning.println("Invalid getEigenDecompositionentry '" + part + "' in " + propertyName);
-                }
-            }
-        }
-        return order;
-    }
-
     // Sets the partials from a sequence in an alignment
-    protected final void setStates(Beagle beagle,
-                                   int nodeIndex, int taxon) {
+    protected final void setStates(Beagle beagle, int nodeIndex, int taxon) {
         Alignment data = dataInput.get();
-        int i;
-
         int[] states = new int[siteCount];
-
-        for (i = 0; i < siteCount; i++) {
+        for (int i = 0; i < siteCount; i++) {
             states[i] = data.getDataType().getStatesForCode(data.getPattern(taxon, i))[0];
         }
-
         beagle.setTipStates(nodeIndex, states);
     }
 
-
-    /**
-     *
-     * @param taxon the taxon name as a string
-     * @param data the alignment
-     * @return the taxon index of the given taxon name for accessing its sequence data in the given alignment,
-     *         or -1 if the taxon is not in the alignment.
-     */
-    private int getTaxonIndex(String taxon, Alignment data) {    	
-        int taxonIndex = data.getTaxonIndex(taxon);
-        if (taxonIndex == -1) {
-        	if (taxon.startsWith("'") || taxon.startsWith("\"")) {
-                taxonIndex = data.getTaxonIndex(taxon.substring(1, taxon.length() - 1));
-            }
-            if (taxonIndex == -1) {
-            	throw new RuntimeException("Could not find sequence " + taxon + " in the alignment");
-            }
-        }
-        return taxonIndex;
-	}
-
-
-    /*
-     * Basic initialization of a beagle instance taken from BeagleTreeLikelihood
-     */
+    // Basic initialization of a beagle instance
     private void setupBeagle() {
         // Initialize buffer helpers
-        partialBufferHelper = new BufferIndexHelper(m_nNodeCount, tipCount);
+        partialBufferHelper = new BufferIndexHelper(nodeCount, tipCount);
         eigenBufferHelper = new BufferIndexHelper(1, 0);
-        matrixBufferHelper = new BufferIndexHelper(m_nNodeCount, 0);
+        matrixBufferHelper = new BufferIndexHelper(nodeCount, 0);
         scaleBufferHelper = new BufferIndexHelper(internalNodeCount + 1, 0);
 
         // Load system properties
@@ -688,7 +693,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
     private void initializeBeagleInstance() {
         long preferenceFlags = 0;
         if (preferredOrder.size() > 0) {
-            preferenceFlags = preferredOrder.get(instanceCount % preferredOrder.size());
+            preferenceFlags = preferredOrder.get(0);
         }
 
         long requirementFlags = 0;
@@ -699,11 +704,11 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
                 tipCount,
                 partialBufferHelper.getBufferCount(),
                 tipCount,
-                m_nStateCount,
+                stateCount,
                 siteCount,
                 eigenBufferHelper.getBufferCount(),
                 matrixBufferHelper.getBufferCount(),
-                categoryCount,
+                1,
                 scaleBufferHelper.getBufferCount(),
                 null,
                 preferenceFlags,
@@ -720,7 +725,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
     private void setupTipStatesAndWeights() {
         Node[] nodes = treeInput.get().getNodesAsArray();
         for (int i = 0; i < tipCount; i++) {
-            int taxon = getTaxonIndex(nodes[i].getID(), dataInput.get());
+            int taxon = dataInput.get().getTaxonIndex(nodes[i].getID());
             setStates(beagle, i, taxon);
         }
 
@@ -774,5 +779,83 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood {
             storedIndexOffsets = indexOffsets;
             indexOffsets = tmp;
         }
+    }
+
+    // Gets the state for a given node in the tree.
+    public int getStateForNode(TreeInterface tree, Node node) {
+        if (!areStatesRedrawn) {
+            sampleAncestralStates(tree, tree.getRoot(), -1);
+            areStatesRedrawn = true;
+        }
+        return reconstructedStates[node.getNr()];
+    }
+
+    // Traverses the tree in pre-order to sample internal node states
+    public void sampleAncestralStates(TreeInterface tree, Node node, int parentState) {
+        int nodeNum = node.getNr();
+        double[] conditionalProbabilities = new double[stateCount];
+
+        if (!node.isLeaf()) {
+            if (node.isRoot()) {
+                // Handle a root node without origin
+                beagle.getPartials(partialBufferHelper.getOffsetIndex(node.getNr()), Beagle.NONE, conditionalProbabilities);
+                double[] rootFrequencies = substitutionModel.getFrequencies();
+                for (int i = 0; i < stateCount; i++) {
+                        conditionalProbabilities[i] *= rootFrequencies[i];
+                    }
+                reconstructedStates[node.getNr()] = Randomizer.randomChoicePDF(conditionalProbabilities);
+            } else {
+                // Handle an internal node
+                double[] partialLikelihood = new double[stateCount];
+                beagle.getPartials(partialBufferHelper.getOffsetIndex(node.getNr()), Beagle.NONE, partialLikelihood);
+
+                if (node.isRoot()) {
+                    // Handle root node (below origin) when origin is present since the origin is not physically in the tree
+                    double[] oPs = new double[stateCount];
+                    System.arraycopy(originPartials, 0, oPs, 0, originPartials.length);
+                    double[] rootFrequencies = substitutionModel.getFrequencies();
+                    for (int i = 0; i < stateCount; i++) {
+                        oPs[i] *= rootFrequencies[i];
+                    }
+
+                    parentState = Randomizer.randomChoicePDF(oPs);
+                    probabilities = rootTransitionMatrix;
+                }
+                else {
+                    // Handle any other internal node with a parent in the tree
+                    beagle.getTransitionMatrix(matrixBufferHelper.getOffsetIndex(node.getNr()), probabilities);
+                }
+
+                // Calculate conditional probabilities
+                int parentIndex = parentState * stateCount;
+                for (int i = 0; i < stateCount; i++) {
+                    conditionalProbabilities[i] = partialLikelihood[i] * probabilities[parentIndex + i];
+                }
+
+                // Sample state
+                reconstructedStates[node.getNr()] = Randomizer.randomChoicePDF(conditionalProbabilities);
+            }
+
+            // Traverse children
+            Node child1 = node.getChild(0);
+            sampleAncestralStates(treeInput.get(), child1, reconstructedStates[node.getNr()]);
+            Node child2 = node.getChild(1);
+            sampleAncestralStates(treeInput.get(), child2, reconstructedStates[node.getNr()]);
+            
+        } else {
+            // Handle leaf node where tissue is known
+            reconstructedStates[node.getNr()] = tipStates[node.getNr()];
+        }
+    }
+
+    @Override
+    public TreeTrait[] getTreeTraits() {
+        return treeTraits.getTreeTraits();
+    }
+
+
+    @Override
+    public TreeTrait getTreeTrait(String key) {
+        return treeTraits.getTreeTrait(key);
     }
 }

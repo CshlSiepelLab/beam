@@ -109,7 +109,7 @@ of BEAST2. -->
                 <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@crisprClockRate"/>
             </distribution>
             
-            <distribution id="traitLikelihood" spec="beam.likelihood.BeagleAncestralTissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
+            <distribution id="traitLikelihood" spec="beam.likelihood.BeagleTissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
                 <siteModel id="geoSiteModel.s:tissue" spec="SiteModel" gammaCategoryCount="1" mutationRate="1">
                     <substModel id="substModelMigration" spec="beam.substitutionmodel.TissueSubstitutionModel" rates="@tissueMigrationRates" pi="@piPrimaryTissueFreq" frequencies="@rootTissueFrequencies"/>
                 </siteModel>
