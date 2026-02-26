@@ -63,10 +63,12 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
     protected Alignment data;
     /* Whether to use scaling for numerical stability */
     protected boolean useScaling = false;
+    protected boolean storedUseScaling = false;
     /* Log scaling factors sum for each site */
     protected double[][] logScalingFactors;
     // Track how many scaling attempt have been done
     protected int numScalingAttempts = 0;
+    protected int storedNumScalingAttempts = 0;
     // After this many attempts, try to turn off scaling
     protected static final int MAX_SCALING_ATTEMPTS = 1000;
     // Threshold for scaling partials
@@ -180,6 +182,7 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
 
         // Do not allow the tree root to be older than the origin 
         if (root.getHeight() >= originHeight) {
+            areStatesRedrawn = false;   // Reset flag for ancestral state sampling
             return Double.NEGATIVE_INFINITY;
         }
 
@@ -192,6 +195,9 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
                 numScalingAttempts++;
             }
         }
+
+        // Reset substitution model
+        substitutionModel = (SubstitutionModel.Base) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
 
         // Setup updates for transition matrices and partial likelihoods
         traverse(root, true);
@@ -221,7 +227,6 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
             if (flip) currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
             double[] probabilities = new double[stateCount * stateCount];
-            substitutionModel = (SubstitutionModel.Base) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
             substitutionModel.getTransitionProbabilities(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node), probabilities);
             matrices[currentMatrixIndex[nodeIndex]][nodeIndex] = Arrays.copyOf(probabilities, probabilities.length);
         }
@@ -361,6 +366,8 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         // Store likelihood core components
         System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, currentMatrixIndex.length);
         System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, currentPartialsIndex.length);
+        storedUseScaling = useScaling;
+        storedNumScalingAttempts = numScalingAttempts;
 
         // Store ancestral states
         System.arraycopy(reconstructedStates, 0, storedReconstructedStates, 0, reconstructedStates.length);
@@ -375,6 +382,8 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         // Restore likelihood core components
         System.arraycopy(storedMatrixIndex, 0, currentMatrixIndex, 0, storedMatrixIndex.length);
         System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, storedPartialsIndex.length);
+        useScaling = storedUseScaling;
+        numScalingAttempts = storedNumScalingAttempts;
 
         // Restore ancestral states
         System.arraycopy(storedReconstructedStates, 0, reconstructedStates, 0, storedReconstructedStates.length);

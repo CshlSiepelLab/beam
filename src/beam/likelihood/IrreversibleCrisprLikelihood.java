@@ -77,10 +77,12 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
     private static final int[] UNEDITED_STATE = new int[]{0};
     /* Whether to use scaling for numerical stability */
     protected boolean useScaling = false;
+    protected boolean storedUseScaling;
     /* Log scaling factors sum for each site */
     protected double[][][] logScalingFactors;
     // Track how many scaling attempt have been done
     protected int numScalingAttempts = 0;
+    protected int storedNumScalingAttempts;
     // After this many attempts, try to turn off scaling
     protected static final int MAX_SCALING_ATTEMPTS = 1000;
     // Threshold for scaling partials
@@ -398,6 +400,8 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
         // Store likelihood core components
         System.arraycopy(currentMatrixIndex, 0, storedMatrixIndex, 0, nrOfNodes);
         System.arraycopy(currentPartialsIndex, 0, storedPartialsIndex, 0, numNodesNoOrigin);
+        storedUseScaling = useScaling;
+        storedNumScalingAttempts = numScalingAttempts;
     }
 
     @Override
@@ -407,6 +411,8 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
         // Restore likelihood core components
         System.arraycopy(storedMatrixIndex, 0, currentMatrixIndex, 0, nrOfNodes);
         System.arraycopy(storedPartialsIndex, 0, currentPartialsIndex, 0, numNodesNoOrigin);
+        useScaling = storedUseScaling;
+        numScalingAttempts = storedNumScalingAttempts;
     }
 
     @Override
