@@ -190,7 +190,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             hasDirt = IS_DIRTY; // Set dirty to recalculate all partials with scaling
             numScalingAttempts = 1;
             traverse(root);
-            if (logP == Double.NEGATIVE_INFINITY) {
+            if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
             }
         }
