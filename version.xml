@@ -1,4 +1,4 @@
-<package name="beam" version="0.4.1">
+<package name="beam" version="0.4.2">
   <depends on="BEAST.base" atleast="2.7.7"/>
   <depends on="BEAST.app" atleast="2.7.7"/>
   <depends on="BEAST_CLASSIC" atleast="1.6.0"/>
@@ -8,8 +8,8 @@
     <provider classname="beam.tree.StartingTreeFromNewick"/>
 
     <!-- Likelihood-related providers -->
-    <provider classname="beam.likelihood.IrreversibleTreeLikelihood"/>
-    <provider classname="beam.likelihood.BeagleTissueLikelihood"/>
+    <provider classname="beam.likelihood.IrreversibleCrisprLikelihood"/>
+    <provider classname="beam.likelihood.TissueLikelihood"/>
 
     <!-- Substitution model providers -->
     <provider classname="beam.substitutionmodel.CrisprSubstitutionModel"/>

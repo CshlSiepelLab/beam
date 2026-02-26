@@ -102,14 +102,14 @@ of BEAST2. -->
         
         <distribution id="likelihood" spec="CompoundDistribution" useThreads="true">
             
-            <distribution id="treeLikelihood" spec="beam.likelihood.IrreversibleTreeLikelihood" origin="@originTime" data="@alignment" tree="@tree">
+            <distribution id="treeLikelihood" spec="beam.likelihood.IrreversibleCrisprLikelihood" origin="@originTime" data="@alignment" tree="@tree">
                 <siteModel spec="SiteModel" id="siteModel" mutationRate="1" gammaCategoryCount="1">
                     <substModel idref="substModelCrispr"/>
                 </siteModel>
                 <branchRateModel spec="beast.base.evolution.branchratemodel.StrictClockModel" clock.rate="@crisprClockRate"/>
             </distribution>
             
-            <distribution id="traitLikelihood" spec="beam.likelihood.BeagleTissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
+            <distribution id="traitLikelihood" spec="beam.likelihood.TissueLikelihood" origin="@originTime" tag="location" tree="@tree" data="@tissue">
                 <siteModel id="geoSiteModel.s:tissue" spec="SiteModel" gammaCategoryCount="1" mutationRate="1">
                     <substModel id="substModelMigration" spec="beam.substitutionmodel.TissueSubstitutionModel" rates="@tissueMigrationRates" pi="@piPrimaryTissueFreq" frequencies="@rootTissueFrequencies"/>
                 </siteModel>

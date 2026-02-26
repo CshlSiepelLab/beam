@@ -32,7 +32,7 @@ import beam.substitutionmodel.CrisprSubstitutionModel;
 @Description("Calculates the tree likelihood while considering the origin of the cell division process " +
             "and using a simplified pruning algorithm to save on computations given the irreversible " +
             "assumptions of the substitution model.")
-public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
+public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
 
     /* Input for the origin time of the cell division process */
     public Input<RealParameter> originInput = new Input<>("origin",
@@ -77,7 +77,6 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     private static final int[] UNEDITED_STATE = new int[]{0};
     /* Whether to use scaling for numerical stability */
     protected boolean useScaling = false;
-    protected boolean storedUseScaling = false;
     /* Log scaling factors sum for each site */
     protected double[][][] logScalingFactors;
     // Track how many scaling attempt have been done
@@ -94,7 +93,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
     double[] coreTransitionValues = new double[4]; // 0: unedited to unedited (top left), 1: edited to same edited (diag), 2: any edit to missing data (last col), 3: unedited to any edited without editRate considered yet (first row)
     double[][][] nodeCoreTransitionValues;
 
-    public IrreversibleTreeLikelihood() {
+    public IrreversibleCrisprLikelihood() {
         branchRateModelInput.setRule(Validate.REQUIRED);
         siteModelInput.setType(SiteModel.Base.class);
     }
@@ -184,12 +183,12 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
             }
         }
         // Calculate likelihood with optional scaling
-        traverse(root);
+        traverse(root, true);
         if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
             setUseScaling(true);
             hasDirt = IS_DIRTY; // Set dirty to recalculate all partials with scaling
             numScalingAttempts = 1;
-            traverse(root);
+            traverse(root, false);
             if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
             }
@@ -204,7 +203,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
      * to reduce the number of ancestral states to propagate partial
      * likelihoods for.
      */
-    protected int traverse(Node node) {
+    protected int traverse(Node node, boolean flip) {
         final int nodeIndex = node.getNr();
         int updateTransitionProbs = (node.isDirty() | hasDirt);
 
@@ -212,7 +211,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         if (updateTransitionProbs != IS_CLEAN) {
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
             coreTransitionValues = substitutionModel.getCoreTransitionProbabilityValues(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node));
-            currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
+            if (flip) currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
             nodeCoreTransitionValues[currentMatrixIndex[nodeIndex]][nodeIndex] = Arrays.copyOf(coreTransitionValues, coreTransitionValues.length);
         }
 
@@ -220,13 +219,14 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
         if (!node.isLeaf()) {
             Node child1 = node.getLeft();
             Node child2 = node.getRight();
-            int updateTransitionProbs1 = traverse(child1);
-            int updateTransitionProbs2 = traverse(child2);
+            int updateTransitionProbs1 = traverse(child1, flip);
+            int updateTransitionProbs2 = traverse(child2, flip);
 
             // Calculate partials if either child is dirty or if scaling is on since we need to accumulate the log scaling factors
             if (updateTransitionProbs1 != IS_CLEAN || updateTransitionProbs2 != IS_CLEAN || useScaling) {
                 int childIndex1 = child1.getNr();
                 int childIndex2 = child2.getNr();
+                if (flip) currentPartialsIndex[nodeIndex] = 1 - currentPartialsIndex[nodeIndex];
                 setPossibleAncestralStates(childIndex1, childIndex2, nodeIndex);
                 calculatePartials(childIndex1, childIndex2, nodeIndex);
 
@@ -235,15 +235,13 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
 
             // Always calculate origin partials once at the root
             if (node.isRoot()) {
-                logP = calculateLogLikelihoods(nodeIndex);
+                logP = calculateLogLikelihood(nodeIndex);
             }
         }
         return updateTransitionProbs;
     }
 
     public void setPossibleAncestralStates(int childIndex1, int childIndex2, int parentIndex) {
-        currentPartialsIndex[parentIndex] = 1 - currentPartialsIndex[parentIndex];
-
         for (int i = 0; i < nrOfSites; i++) {
             final int child1State = ancestralStates[currentPartialsIndex[childIndex1]][childIndex1][i];
             final int child2State = ancestralStates[currentPartialsIndex[childIndex2]][childIndex2][i];
@@ -337,7 +335,7 @@ public class IrreversibleTreeLikelihood extends GenericTreeLikelihood {
      * The origin is known to be in the unedited state, so we can only calculate the partials
      * for transitions from that state only.
      */
-    public double calculateLogLikelihoods(int rootIndex) {
+    public double calculateLogLikelihood(int rootIndex) {
         double lnl = 0.0;
 
         final double[][] rootPartials = partials[currentPartialsIndex[rootIndex]][rootIndex];
