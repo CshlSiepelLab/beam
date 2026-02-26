@@ -48,8 +48,6 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
     int stateCount;
     // Number of nodes in the tree
     int nodeCount;
-    // Dimensions of the transition matrix
-    int matrixDimensions;
     // Input frequencies
     private double[] rootFrequencies;
     // Operations array
@@ -94,10 +92,6 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
     protected int numScalingAttempts = 0;
     // After this many attempts, try to turn off scaling
     protected static final int MAX_SCALING_ATTEMPTS = 1000;
-    // Scale buffer indices
-    private int[] scaleBufferIndices;
-    // Stored scale buffer indices
-    private int[] storedScaleBufferIndices;
     // Origin height
     protected Double originHeight;
     // Data type for the alignment
@@ -148,10 +142,8 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
         // Setup arrays
         // Initialize frequency array
         rootFrequencies = substitutionModel.getFrequencies();
-        // Setup matrices
-        matrixDimensions = stateCount * stateCount;
         // Initialize probability arrays
-        probabilities = new double[matrixDimensions];
+        probabilities = new double[stateCount * stateCount];
         // Setup tree node counts
         nodeCount = treeInput.get().getNodeCount();
         tipCount = treeInput.get().getLeafNodeCount();
@@ -160,13 +152,11 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
         int partialsSize = stateCount;
         originPartials = new double[partialsSize];
         storedOriginPartials = new double[partialsSize];
-        rootTransitionMatrix = new double[matrixDimensions];
-        storedRootTransitionMatrix = new double[matrixDimensions];
+        rootTransitionMatrix = new double[stateCount * stateCount];
+        storedRootTransitionMatrix = new double[stateCount * stateCount];
         rootPartials = new double[stateCount];
 
         // Initialize other arrays
-        scaleBufferIndices = new int[internalNodeCount];
-        storedScaleBufferIndices = new int[internalNodeCount];
         operations = new int[internalNodeCount * Beagle.OPERATION_TUPLE_SIZE];
         operationCount = 0;
 
@@ -219,6 +209,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
                 hasDirt = IS_DIRTY;
                 numScalingAttempts++;
             } else {
+                System.out.println("Turning off scaling...");
                 // Turn off scaling after many attempts, since it may no longer be needed
                 useScaleFactors = false;
                 hasDirt = IS_DIRTY;
@@ -233,6 +224,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
         traverse(root, true);
 
         if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
+            System.out.println("Likelihood is negative infinity or NaN, trying to scale partials...");
             useScaleFactors = true;
             hasDirt = IS_DIRTY;
             numScalingAttempts++;
@@ -254,7 +246,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
             scaleBufferHelper.flipOffset(internalNodeCount);
             cumulateScaleBufferIndex = scaleBufferHelper.getOffsetIndex(internalNodeCount);
             beagle.resetScaleFactors(cumulateScaleBufferIndex);
-            beagle.accumulateScaleFactors(scaleBufferIndices, internalNodeCount, cumulateScaleBufferIndex);
+            beagle.accumulateScaleFactors(scaleBufferHelper.getOffsetIndices(), internalNodeCount, cumulateScaleBufferIndex);
         }
         return cumulateScaleBufferIndex;
     }
@@ -269,7 +261,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
         // Setup root transition matrix from origin to root
         double br = branchRateModel.getRateForBranch(root);
         substitutionModel.getTransitionProbabilities(root, originHeight, root.getHeight(), br, probabilities);
-        System.arraycopy(probabilities, 0, rootTransitionMatrix, 0, matrixDimensions);
+        System.arraycopy(probabilities, 0, rootTransitionMatrix, 0, probabilities.length);
 
         // Calculate origin partials
         calculateOriginPartials(rootPartials, rootTransitionMatrix, originPartials);
@@ -345,8 +337,7 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
                 if (useScaleFactors) {
                     int n = nodeNum - tipCount; // Get the index of this scaling buffer, since only internal node have scaling buffers
                     scaleBufferHelper.flipOffset(n);
-                    scaleBufferIndices[n] = scaleBufferHelper.getOffsetIndex(n);    // Store the index
-                    operations[x + 1] = scaleBufferIndices[n]; // Write new scaleFactor
+                    operations[x + 1] = scaleBufferHelper.getOffsetIndex(n); // Write new scaleFactor
                     operations[x + 2] = Beagle.NONE;
                 } else {
                     operations[x + 1] = Beagle.NONE; // Not using scaleFactors
@@ -397,7 +388,6 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
 
         if (((CalculationNode) substitutionModel).isDirtyCalculation() || 
             ((SiteModel.Base) siteModelInput.get()).isDirtyCalculation() ||
-            dataInput.get().isDirtyCalculation() || 
             branchRateModel.isDirtyCalculation()) {
             hasDirt = IS_DIRTY;
             return true;
@@ -412,10 +402,8 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
     public void store() {
         partialBufferHelper.storeState();
         matrixBufferHelper.storeState();
-        if (useScaleFactors) {
-            scaleBufferHelper.storeState();
-            System.arraycopy(scaleBufferIndices, 0, storedScaleBufferIndices, 0, scaleBufferIndices.length);
-        }
+        if (useScaleFactors) scaleBufferHelper.storeState();
+
         // Store origin partials
         System.arraycopy(originPartials, 0, storedOriginPartials, 0, originPartials.length);
         // Store root to origin branch transition matrix
@@ -432,10 +420,8 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
     public void restore() {
         partialBufferHelper.restoreState();
         matrixBufferHelper.restoreState();
-        if (useScaleFactors) {
-            scaleBufferHelper.restoreState();
-            System.arraycopy(storedScaleBufferIndices, 0, scaleBufferIndices, 0, storedScaleBufferIndices.length);
-        }
+        if (useScaleFactors) scaleBufferHelper.restoreState();
+
         // restore origin partials
         System.arraycopy(storedOriginPartials, 0, originPartials, 0, originPartials.length);
         // Restore root to origin branch transition matrix
@@ -547,14 +533,16 @@ public class BeagleTissueLikelihood extends GenericTreeLikelihood implements Tre
             }
         }
 
+        public int[] getOffsetIndices() {
+            return indexOffsets;
+        }
+
         public void storeState() {
             System.arraycopy(indexOffsets, 0, storedIndexOffsets, 0, indexOffsets.length);
         }
 
         public void restoreState() {
-            int[] tmp = storedIndexOffsets;
-            storedIndexOffsets = indexOffsets;
-            indexOffsets = tmp;
+            System.arraycopy(storedIndexOffsets, 0, indexOffsets, 0, storedIndexOffsets.length);
         }
     }
 
