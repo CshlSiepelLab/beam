@@ -119,6 +119,7 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
         nrOfNodes = numNodesNoOrigin + 1; // +1 for origin node
         originIndex = numNodesNoOrigin; // Origin node is the last index in 0-based indexing
         
+        // Setup partial arrays
         partialsSizes = new int[nrOfSites];
         for (int i = 0; i < nrOfSites; i++) {
             partialsSizes[i] = nrOfStatesPerSite[i];
@@ -195,12 +196,13 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
         substitutionModel = (CrisprSubstitutionModel) siteModel.substModelInput.get();
 
         // Calculate likelihood with optional scaling
-        traverse(root, true);
+        traverse(root);
         if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
+            restore(); // Reset indicex to not double flip and overwrite restore state
             setUseScaling(true);
             hasDirt = IS_DIRTY; // Set dirty to recalculate all partials with scaling
             numScalingAttempts++;
-            traverse(root, false);
+            traverse(root);
             if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
             }
@@ -216,13 +218,13 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
      * to reduce the number of ancestral states to propagate partial
      * likelihoods for.
      */
-    protected int traverse(Node node, boolean flip) {
+    protected int traverse(Node node) {
         final int nodeIndex = node.getNr();
-        int updateTransitionProbs = (node.isDirty() | hasDirt);
+        int updateTransitionProbs = node.isDirty() | hasDirt;
 
         // Update transition probabilities if needed
         if (updateTransitionProbs != IS_CLEAN) {
-            if (flip) currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
+            currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
             nodeCoreTransitionValues[currentMatrixIndex[nodeIndex]][nodeIndex] = substitutionModel.getCoreTransitionProbabilityValues(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node));
         }
@@ -231,14 +233,14 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
         if (!node.isLeaf()) {
             Node child1 = node.getLeft();
             Node child2 = node.getRight();
-            int updateTransitionProbs1 = traverse(child1, flip);
-            int updateTransitionProbs2 = traverse(child2, flip);
+            int updateTransitionProbs1 = traverse(child1);
+            int updateTransitionProbs2 = traverse(child2);
 
             // Calculate partials if either child is dirty or if scaling is on since we need to accumulate the log scaling factors
             if (updateTransitionProbs1 != IS_CLEAN || updateTransitionProbs2 != IS_CLEAN || useScaling) {
                 int childIndex1 = child1.getNr();
                 int childIndex2 = child2.getNr();
-                if (flip) currentPartialsIndex[nodeIndex] = 1 - currentPartialsIndex[nodeIndex];
+                currentPartialsIndex[nodeIndex] = 1 - currentPartialsIndex[nodeIndex];
                 setPossibleAncestralStates(childIndex1, childIndex2, nodeIndex);
                 calculatePartials(childIndex1, childIndex2, nodeIndex);
 
@@ -248,7 +250,7 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
 
         // Always calculate origin partials once at the root
         if (node.isRoot()) {
-            if (flip) currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
+            currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
             logP = calculateLogLikelihood(nodeIndex, originIndex);
         }
 
@@ -403,8 +405,6 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
             logScalingFactors = new double[2][numNodesNoOrigin][nrOfSites]; // Reset log scaling factors when turning on scaling
         }
     }
-
-
 
     @Override
     public void store() {

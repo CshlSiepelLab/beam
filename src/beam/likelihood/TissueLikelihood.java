@@ -190,7 +190,7 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         // Setup rescaling
         if (useScaling) {
             if (numScalingAttempts >= MAX_SCALING_ATTEMPTS) {
-                useScaling = false;
+                setUseScaling(false);
                 numScalingAttempts = 0;
                 hasDirt = IS_DIRTY;
             } else {
@@ -203,13 +203,13 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         substitutionModel = (SubstitutionModel.Base) siteModel.substModelInput.get();
 
         // Calculate likelihood with optional scaling
-        traverse(root, true);
+        traverse(root);
         if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
-            useScaling = true;
-            logScalingFactors = new double[2][nrOfNodes];
+            restore(); // Reset indicex to not double flip and overwrite restore state
+            setUseScaling(true);
             hasDirt = IS_DIRTY;
             numScalingAttempts++;
-            traverse(root, false);
+            traverse(root);
             if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
             }
@@ -221,13 +221,13 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
 
 
     // Traverse the tree to update transition probability matrices and partial likelihoods for each node
-    private int traverse(Node node, boolean flip) {
+    private int traverse(Node node) {
         int nodeIndex = node.getNr();
         int updateTransitionProbs = (node.isDirty() | hasDirt);
 
         // Update transition probability matrix
         if (updateTransitionProbs != IS_CLEAN) {
-            if (flip) currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
+            currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
             substitutionModel.getTransitionProbabilities(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node), matrices[currentMatrixIndex[nodeIndex]][nodeIndex]);
         }
@@ -236,14 +236,14 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         if (!node.isLeaf()) {
             Node child1 = node.getLeft();
             Node child2 = node.getRight();
-            int updateTransitionProbs1 = traverse(child1, flip);
-            int updateTransitionProbs2 = traverse(child2, flip);
+            int updateTransitionProbs1 = traverse(child1);
+            int updateTransitionProbs2 = traverse(child2);
 
             // Calculate partials if either child is dirty or if scaling is on since we need to accumulate the log scaling factors
             if (updateTransitionProbs1 != IS_CLEAN || updateTransitionProbs2 != IS_CLEAN || useScaling) {
                 int childIndex1 = child1.getNr();
                 int childIndex2 = child2.getNr();
-                if (flip) currentPartialsIndex[nodeIndex] = 1 - currentPartialsIndex[nodeIndex];
+                currentPartialsIndex[nodeIndex] = 1 - currentPartialsIndex[nodeIndex];
                 calculatePartials(childIndex1, childIndex2, nodeIndex);
 
                 updateTransitionProbs |= (updateTransitionProbs1 | updateTransitionProbs2);
@@ -252,7 +252,7 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
 
         // Always calculate origin partials once at the root
         if (node.isRoot()) {
-            if (flip) currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
+            currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
             logP = calculateLogLikelihood(nodeIndex, originIndex);
         }
 
@@ -344,6 +344,13 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
             totalLogScaling += logScalingFactors[currentPartialsIndex[j]][j];
         }
         return totalLogScaling;
+    }
+
+    public void setUseScaling(boolean status) {
+        useScaling = status;
+        if (useScaling) {
+            logScalingFactors = new double[2][nrOfNodes]; // Reset log scaling factors when turning on scaling
+        }
     }
 
     @Override
