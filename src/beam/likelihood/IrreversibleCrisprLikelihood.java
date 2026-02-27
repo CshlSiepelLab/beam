@@ -45,6 +45,8 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
     protected Double originHeight;
     /* Substitution model for mutations */
     protected CrisprSubstitutionModel substitutionModel;
+    // Site model
+    protected SiteModel.Base siteModel;
     /* Number of sites in the alignment */
     protected int nrOfSites;
     /* Whether the substitution model is global */
@@ -57,6 +59,8 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
     protected int nrOfNodes;
     /* Number of nodes excluding the origin node */
     protected int numNodesNoOrigin;
+    // Origin index
+    protected int originIndex;
     /* Size of the partials array per site */
     protected int[] partialsSizes;
     /* Partial likelihoods for each node */
@@ -82,7 +86,7 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
     protected double[][][] logScalingFactors;
     // Track how many scaling attempt have been done
     protected int numScalingAttempts = 0;
-    protected int storedNumScalingAttempts;
+    protected int storedNumScalingAttempts = 0;
     // After this many attempts, try to turn off scaling
     protected static final int MAX_SCALING_ATTEMPTS = 1000;
     // Threshold for scaling partials
@@ -102,7 +106,8 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
 
     @Override
     public void initAndValidate() {
-        substitutionModel = (CrisprSubstitutionModel) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
+        siteModel = (SiteModel.Base) siteModelInput.get();
+        substitutionModel = (CrisprSubstitutionModel) siteModel.substModelInput.get();
         originHeight = originInput.get().getValue();
         nrOfSites = substitutionModel.getSiteCount();
         data = substitutionModel.getData(); // We use the data from the substitution model since the missing data state (-1) is replaced there during the rate matrix setup
@@ -112,22 +117,24 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
         // Initialize data structures for likelihood calculations
         numNodesNoOrigin = treeInput.get().getNodeCount();
         nrOfNodes = numNodesNoOrigin + 1; // +1 for origin node
-        nodeCoreTransitionValues = new double[2][nrOfNodes][4]; // First index is for store/restore swapping
+        originIndex = numNodesNoOrigin; // Origin node is the last index in 0-based indexing
+        
         partialsSizes = new int[nrOfSites];
         for (int i = 0; i < nrOfSites; i++) {
             partialsSizes[i] = nrOfStatesPerSite[i];
         }
-        partials = new double[2][numNodesNoOrigin][nrOfSites][];
+        partials = new double[2][nrOfNodes][nrOfSites][];
         // Initialize all arrays to 0
-        for (int i = 0; i < numNodesNoOrigin; i++) {
+        for (int i = 0; i < nrOfNodes; i++) {
             for (int j = 0; j < nrOfSites; j++) {
                 partials[0][i][j] = new double[partialsSizes[j]];
                 partials[1][i][j] = new double[partialsSizes[j]];
             }
         }
-
-        logScalingFactors = new double[2][numNodesNoOrigin][nrOfSites]; // First index is for store/restore swapping
-        numScalingAttempts = 0;
+        currentPartialsIndex = new int[nrOfNodes];
+        storedPartialsIndex = new int[nrOfNodes];
+        logScalingFactors = new double[2][nrOfNodes][nrOfSites];
+        ancestralStates = new int[2][numNodesNoOrigin][nrOfSites];
 
         // Initialize arrays
         allStatesPerSite = new int[nrOfSites][];
@@ -138,13 +145,9 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
             }
         }
 
-        ancestralStates = new int[2][numNodesNoOrigin][nrOfSites];
-
-        // Initialize indices to 0
+        nodeCoreTransitionValues = new double[2][nrOfNodes][4];
         currentMatrixIndex = new int[nrOfNodes];
         storedMatrixIndex = new int[nrOfNodes];
-        currentPartialsIndex = new int[numNodesNoOrigin];
-        storedPartialsIndex = new int[numNodesNoOrigin];
 
         // Set initial states
         setStates(treeInput.get().getRoot());
@@ -170,7 +173,8 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
 
     @Override
     public double calculateLogP() {
-        Node root = treeInput.get().getRoot();
+        final Node root = treeInput.get().getRoot();
+
         // Return -infinity if tree exceeds origin time
         if (root.getHeight() >= originHeight) {
             return Double.NEGATIVE_INFINITY;
@@ -179,22 +183,29 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
         if (useScaling) {
             if (numScalingAttempts >= MAX_SCALING_ATTEMPTS) {
                 setUseScaling(false);
+                numScalingAttempts = 0;
                 hasDirt = IS_DIRTY; // Set dirty to recalculate all partials without scaling
             } else {
                 numScalingAttempts++;
             }
         }
+
+        // Get new models
+        siteModel = (SiteModel.Base) siteModelInput.get();
+        substitutionModel = (CrisprSubstitutionModel) siteModel.substModelInput.get();
+
         // Calculate likelihood with optional scaling
         traverse(root, true);
         if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
             setUseScaling(true);
             hasDirt = IS_DIRTY; // Set dirty to recalculate all partials with scaling
-            numScalingAttempts = 1;
+            numScalingAttempts++;
             traverse(root, false);
             if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
             }
         }
+
         return logP;
     }
 
@@ -211,10 +222,9 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
 
         // Update transition probabilities if needed
         if (updateTransitionProbs != IS_CLEAN) {
-            double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
-            coreTransitionValues = substitutionModel.getCoreTransitionProbabilityValues(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node));
             if (flip) currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
-            nodeCoreTransitionValues[currentMatrixIndex[nodeIndex]][nodeIndex] = Arrays.copyOf(coreTransitionValues, coreTransitionValues.length);
+            double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
+            nodeCoreTransitionValues[currentMatrixIndex[nodeIndex]][nodeIndex] = substitutionModel.getCoreTransitionProbabilityValues(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node));
         }
 
         // Process internal nodes
@@ -234,12 +244,14 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
 
                 updateTransitionProbs |= (updateTransitionProbs1 | updateTransitionProbs2);
             }
-
-            // Always calculate origin partials once at the root
-            if (node.isRoot()) {
-                logP = calculateLogLikelihood(nodeIndex);
-            }
         }
+
+        // Always calculate origin partials once at the root
+        if (node.isRoot()) {
+            if (flip) currentPartialsIndex[originIndex] = 1 - currentPartialsIndex[originIndex];
+            logP = calculateLogLikelihood(nodeIndex, originIndex);
+        }
+
         return updateTransitionProbs;
     }
 
@@ -337,18 +349,19 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
      * The origin is known to be in the unedited state, so we can only calculate the partials
      * for transitions from that state only.
      */
-    public double calculateLogLikelihood(int rootIndex) {
+    public double calculateLogLikelihood(int rootIndex, int originIndex) {
         double lnl = 0.0;
 
         final double[][] rootPartials = partials[currentPartialsIndex[rootIndex]][rootIndex];
+        double[][] originPartials = partials[currentPartialsIndex[originIndex]][originIndex];
 
         for (int k = 0; k < nrOfSites; k++) {
-            double sum = 0;    // Reset origin partials; Only the first position is needed, assuming the barcode starts unedited
+            originPartials[k][0] = 0;    // Reset origin partials; Only the first position is needed, assuming the barcode starts unedited
             final int[] possibleRootStates = getPossibleStates(ancestralStates[currentPartialsIndex[rootIndex]][rootIndex][k], allStatesPerSite[k]);
             for (int rootState : possibleRootStates) {
-                sum += getTransitionProbFromCoreValues(0, rootState, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][rootState];
+                originPartials[k][0] += getTransitionProbFromCoreValues(0, rootState, nodeCoreTransitionValues[currentMatrixIndex[rootIndex]][rootIndex], k) * rootPartials[k][rootState];
             }
-            lnl += Math.log(sum);  // No scaling needed ever since its just one possible state at the origin
+            lnl += Math.log(originPartials[k][0]);  // No scaling needed ever since its just one possible state at the origin
         }
 
         // Can just add the total log scaling factors at the end across all sites since we are in log space
@@ -417,9 +430,12 @@ public class IrreversibleCrisprLikelihood extends GenericTreeLikelihood {
 
     @Override
     protected boolean requiresRecalculation() {
-        // Recalculate all transition probabilities and partials if any rates have changed
-        if (((SiteModel.Base) siteModelInput.get()).isDirtyCalculation() ||
-            branchRateModelInput.get().isDirtyCalculation()) {
+        siteModel = (SiteModel.Base) siteModelInput.get();
+        substitutionModel = (CrisprSubstitutionModel) siteModel.substModelInput.get();
+        if (substitutionModel.isDirtyCalculation() ||
+            siteModel.isDirtyCalculation() || 
+            ((CalculationNode) branchRateModelInput.get()).isDirtyCalculation()) {
+
             hasDirt = IS_DIRTY;
             return true;
         }

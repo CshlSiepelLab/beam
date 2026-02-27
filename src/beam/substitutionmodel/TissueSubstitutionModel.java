@@ -28,6 +28,9 @@ public class TissueSubstitutionModel extends GeneralSubstitutionModel {
             "Stationary frequency of the first state",
             Validate.REQUIRED);
 
+    // Store pi
+    private double storedPi;
+
     @Override
     public void initAndValidate() {
 
@@ -51,6 +54,8 @@ public class TissueSubstitutionModel extends GeneralSubstitutionModel {
                  IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
             throw new IllegalArgumentException(e.getMessage());
         }
+
+        storedPi = piInput.get().getValue();
     }
 
     /**
@@ -150,7 +155,19 @@ public class TissueSubstitutionModel extends GeneralSubstitutionModel {
     }
 
     @Override
+    public boolean requiresRecalculation() {
+        if (piInput.get().getValue() != storedPi) return true;
+        return super.requiresRecalculation();
+    }
+
+    @Override
     public boolean canReturnComplexDiagonalization() {
         return true;
+    }
+
+    @Override
+    public void store() {
+        storedPi = piInput.get().getValue();
+        super.store();
     }
 }

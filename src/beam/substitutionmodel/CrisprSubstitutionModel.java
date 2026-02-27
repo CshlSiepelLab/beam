@@ -56,16 +56,14 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private Alignment data;
     // Number of taxa
     private int taxonCount;
+    // Stored silencing rate
+    private double storedSilencingRate;
     // Number of sites
     private int nrOfSites;
-    // Silencing rate parameter
-    private RealParameter silencingRate_;
     // Array of max state found per site
     private int[] maxStates;
     // Array of edit rates
     private Double[][] editRates;
-    // Stored silencing rate for dirty state checking
-    private double storedSilencingRate;
     // Sitewise number of states
     public int[] nrOfStatesPerSite;
     // Sitewise index for missing data state in the rate matrix
@@ -111,20 +109,14 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             nrOfStatesPerSite[i] = maxStates[i] + 2;  // Number of states is number of edits + unedited state (0) + missing data state (-1)
         }
 
-        // Silencing rate is independent of edit rates, so set it up seperately
-        silencingRate_ = silencingRateInput.get();  // Rate for the missing data state (-1)
-        double silencingRate = silencingRate_.getValue();
-        storedSilencingRate = silencingRate;
-        if (silencingRate < 0) {
-            throw new RuntimeException("Loss rate must be positive!");
-        }
-
         // Missing data state is the last edit in the rate matrix, so remap input -1 characters to that state index
         missingDataStates = new int[nrOfSites];
         for (int i = 0; i < nrOfSites; i++) {
             missingDataStates[i] = nrOfStatesPerSite[i] - 1; // Missing data state index
         }
         replaceMissingDataStates();
+
+        storedSilencingRate = silencingRateInput.get().getValue();
     }
 
 
@@ -147,12 +139,13 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         maxStates = new int[nrOfSites];
         editRates = new Double[nrOfSites][];
         if (!editRatesInput.get().isEmpty()) {
-            if (!is_global) {
-                throw new RuntimeException("Sitewise model structure is not compatible with provided " +
-                        "edit rates in the current implementation. Please use the global model structure.");
-            }
-            getProvidedEditRates();
-            return;
+            throw new RuntimeException("TODO: Not sure that the provided edit rates is setup currently in terms of mcmc store/restore. Will work in this soon.");
+            // if (!is_global) {
+            //     throw new RuntimeException("Sitewise model structure is not compatible with provided " +
+            //             "edit rates in the current implementation. Please use the global model structure.");
+            // }
+            // getProvidedEditRates();
+            // return;
         } else {
             calculateDynamicEditRates();
         }
@@ -413,7 +406,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     public double[] getCoreTransitionProbabilityValues(Node node, double startTime, double endTime, double rate) {
         // Calculate key parameters that are assumed to be consistent across sites
-        double silencingRate = silencingRate_.getValue();
+        double silencingRate = silencingRateInput.get().getValue();
         double delta = (startTime - endTime) * rate;
         double expOfDeltaLoss = Math.exp(-delta * silencingRate);
 
@@ -427,19 +420,14 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     @Override
     public void store() {
-        storedSilencingRate = silencingRate_.getValue();
+        storedSilencingRate = silencingRateInput.get().getValue();
         super.store();
     }
 
     @Override
-    public void restore() {
-        super.restore();
-    }
-
-    @Override
     public boolean requiresRecalculation() {
-        // Since edit rates are fixed hyperparameters, the only thing that can change is the silencing rate
-        return silencingRate_.getValue() != storedSilencingRate;
+        if (silencingRateInput.get().getValue() != storedSilencingRate) return true;
+        return super.requiresRecalculation();
     }
 
     @Override
@@ -479,7 +467,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     }
 
     public double getSilencingRate() {
-        return silencingRate_.getValue();
+        return silencingRateInput.get().getValue();
     }
 
     // Required, but not used

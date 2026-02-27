@@ -5,11 +5,13 @@ import java.util.Arrays;
 import beast.base.core.Description;
 import beast.base.core.Input;
 import beast.base.core.Input.Validate;
+import beast.base.inference.CalculationNode;
 import beast.base.evolution.tree.Node;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.evolution.alignment.Alignment;
 import beast.base.evolution.substitutionmodel.SubstitutionModel;
 import beast.base.evolution.sitemodel.SiteModel;
+import beast.base.evolution.branchratemodel.BranchRateModel;
 import beast.base.evolution.likelihood.GenericTreeLikelihood;
 import beast.base.evolution.datatype.DataType;
 import beastclassic.evolution.tree.TreeTrait;
@@ -101,9 +103,10 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
 
     @Override
     public void initAndValidate() {
-        if (((SiteModel.Base) siteModelInput.get()).getCategoryCount() > 1) throw new IllegalArgumentException("Site categories are not supported in the current implementation.");
+        siteModel = (SiteModel.Base) siteModelInput.get();
+        if (siteModel.getCategoryCount() > 1) throw new IllegalArgumentException("Site categories are not supported in the current implementation.");
 
-        substitutionModel = (SubstitutionModel.Base) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
+        substitutionModel = (SubstitutionModel.Base) siteModel.substModelInput.get();
         if (!substitutionModel.canReturnComplexDiagonalization()) throw new IllegalArgumentException("Substitution model must be able to return transition probabilities.");
 
         data = dataInput.get();
@@ -179,33 +182,33 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
     @Override
     public double calculateLogP() {
         final Node root = treeInput.get().getRoot();
-
         // Do not allow the tree root to be older than the origin 
         if (root.getHeight() >= originHeight) {
             areStatesRedrawn = false;   // Reset flag for ancestral state sampling
             return Double.NEGATIVE_INFINITY;
         }
-
         // Setup rescaling
         if (useScaling) {
             if (numScalingAttempts >= MAX_SCALING_ATTEMPTS) {
                 useScaling = false;
+                numScalingAttempts = 0;
                 hasDirt = IS_DIRTY;
             } else {
                 numScalingAttempts++;
             }
         }
 
-        // Reset substitution model
-        substitutionModel = (SubstitutionModel.Base) ((SiteModel.Base) siteModelInput.get()).substModelInput.get();
+        // Get new models
+        siteModel = (SiteModel.Base) siteModelInput.get();
+        substitutionModel = (SubstitutionModel.Base) siteModel.substModelInput.get();
 
-        // Setup updates for transition matrices and partial likelihoods
+        // Calculate likelihood with optional scaling
         traverse(root, true);
-
         if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
             useScaling = true;
+            logScalingFactors = new double[2][nrOfNodes];
             hasDirt = IS_DIRTY;
-            numScalingAttempts = 1;
+            numScalingAttempts++;
             traverse(root, false);
             if (logP == Double.NEGATIVE_INFINITY || Double.isNaN(logP)) {
                 throw new RuntimeException("Likelihood is still negative infinity after scaling");
@@ -226,9 +229,7 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         if (updateTransitionProbs != IS_CLEAN) {
             if (flip) currentMatrixIndex[nodeIndex] = 1 - currentMatrixIndex[nodeIndex];
             double parentHeight = node.isRoot() ? originHeight : node.getParent().getHeight();
-            double[] probabilities = new double[stateCount * stateCount];
-            substitutionModel.getTransitionProbabilities(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node), probabilities);
-            matrices[currentMatrixIndex[nodeIndex]][nodeIndex] = Arrays.copyOf(probabilities, probabilities.length);
+            substitutionModel.getTransitionProbabilities(node, parentHeight, node.getHeight(), branchRateModelInput.get().getRateForBranch(node), matrices[currentMatrixIndex[nodeIndex]][nodeIndex]);
         }
 
         // Process internal nodes
@@ -349,7 +350,9 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
     protected boolean requiresRecalculation() {
         siteModel = (SiteModel.Base) siteModelInput.get();
         substitutionModel = (SubstitutionModel.Base) siteModel.substModelInput.get();
-        if (substitutionModel.isDirtyCalculation() || siteModel.isDirtyCalculation() || branchRateModelInput.get().isDirtyCalculation()) {
+        if (substitutionModel.isDirtyCalculation() || 
+            siteModel.isDirtyCalculation() || 
+            ((CalculationNode) branchRateModelInput.get()).isDirtyCalculation()) {
             hasDirt = IS_DIRTY;
             return true;
         }
