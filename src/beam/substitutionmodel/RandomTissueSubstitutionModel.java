@@ -23,6 +23,9 @@ public class RandomTissueSubstitutionModel extends GeneralSubstitutionModel {
 
     public Input<RealParameter> piInput = new Input<>("pi", "Stationary frequency of the first state", Validate.REQUIRED);
 
+    // Store pi
+    private double storedPi;
+
     /*
      * This class always returns transition probabilities equal to the stationary
      * distribution of the states. This is useful for testing an ancestral state
@@ -40,6 +43,8 @@ public class RandomTissueSubstitutionModel extends GeneralSubstitutionModel {
          // Verify the number of input rates is correct
          int nrInputRates = ratesInput.get().getDimension();
          relativeRates = new double[ratesInput.get().getDimension()];
+
+         storedPi = piInput.get().getValue();
      }
 
 
@@ -73,8 +78,20 @@ public class RandomTissueSubstitutionModel extends GeneralSubstitutionModel {
     }
 
     @Override
+    public boolean requiresRecalculation() {
+        if (piInput.get().getValue() != storedPi) return true;
+        return super.requiresRecalculation();
+    }
+
+    @Override
     public boolean canReturnComplexDiagonalization() {
         return true;
+    }
+
+    @Override
+    public void store() {
+        storedPi = piInput.get().getValue();
+        super.store();
     }
 }
 
