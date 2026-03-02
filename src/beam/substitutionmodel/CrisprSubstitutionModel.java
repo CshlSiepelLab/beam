@@ -149,8 +149,8 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
             }
             getProvidedEditRates();
             getMaxObservedStatesGlobal();
-            if (editRates[0].length != maxStates[0]) {
-                throw new RuntimeException("Number of input edit rates (" + editRates[0].length + ") does not match the number of edits observed in the data (" + maxStates[0] + ").");
+            if (editRatesInput.get().getValues().length != maxStates[0]) {
+                throw new RuntimeException("Number of input edit rates (" + editRatesInput.get().getValues().length + ") does not match the number of edits observed in the data (" + maxStates[0] + ").");
             }
             return;
         } else {
@@ -161,14 +161,8 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     private void getProvidedEditRates() {
         if (printRates_) System.out.println("Using provided edit rates.");
-        editRates[0] = editRatesInput.get().getValues();
-        // Reuse the same array reference for all sites since we are using the global model
-        for (int i = 1; i < nrOfSites; i++) {
-            editRates[i] = editRates[0];
-        }
-        // May need to store input edit rates since they may be free parameters during inference
-        storedEditRates = new Double[editRates[0].length];
-        System.arraycopy(editRates[0], 0, storedEditRates, 0, editRates[0].length);
+        storedEditRates = new Double[editRatesInput.get().getValues().length];
+        System.arraycopy(editRatesInput.get().getValues(), 0, storedEditRates, 0, editRatesInput.get().getValues().length);
     }
 
     private void calculateDynamicEditRates() {
@@ -428,18 +422,13 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     public void store() {
         super.store();
         storedSilencingRate = silencingRateInput.get().getValue();
-        if (hasInputEditRates) System.arraycopy(editRates[0], 0, storedEditRates, 0, editRates[0].length);
-    }
-
-    @Override
-    public void restore() {
-        super.restore();
-        if (hasInputEditRates) System.arraycopy(storedEditRates, 0, editRates[0], 0, storedEditRates.length);  // Restore reference to the input edit rates array since it may have been changed during inference
+        if (hasInputEditRates) System.arraycopy(editRatesInput.get().getValues(), 0, storedEditRates, 0, editRatesInput.get().getValues().length);
     }
 
     @Override
     public boolean requiresRecalculation() {
         if (silencingRateInput.get().getValue() != storedSilencingRate) return true;
+        if (hasInputEditRates && !Arrays.equals(editRatesInput.get().getValues(), storedEditRates)) return true;
         return super.requiresRecalculation();
     }
 
@@ -477,8 +466,9 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     public double getEditRate(int site, int editIndex) {
         if (hasInputEditRates) {
-            // Update edit rates from input in case they have changed since initialization, but only for the first site since other sites reference the same array in global mode
-            editRates[0] = editRatesInput.get().getValues();
+            // Get directly from input edit rates in case they are free parameters during inference
+            // The current setup for input edit rates only allows them with the global mode, so the site can be ignored here
+            return editRatesInput.get().getValue(editIndex);
         }
         return editRates[site][editIndex - 1];  // Edit index is 1-based for input but 0-base in the array
     }
