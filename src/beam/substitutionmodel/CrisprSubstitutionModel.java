@@ -34,8 +34,8 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     public final Input<RealParameter> silencingRateInput = new Input<>("silencingRate", "Rate at which barcodes " +
             "are silenced throughout the entire experiment", Validate.REQUIRED);
     // Input for edit rates during the editing window
-    public final Input<List<RealParameter>> editRatesInput = new Input<>("editRates", "Input rates at which edits " +
-            "are introduced into the genomic barcode during the editing window", new ArrayList<>(), Validate.OPTIONAL);
+    public final Input<RealParameter> editRatesInput = new Input<>("editRates", "Input rates at which edits " +
+            "are introduced into the genomic barcode during the editing window", Validate.OPTIONAL);
     // Input for edit rates during the editing window
     public final Input<Alignment> dataInput = new Input<>("data", "EditData from which to calculate edit rates if " +
             "they are not provided", Validate.REQUIRED);
@@ -64,6 +64,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private int[] maxStates;
     // Array of edit rates
     private Double[][] editRates;
+    private Double[] storedEditRates;
     // Sitewise number of states
     public int[] nrOfStatesPerSite;
     // Sitewise index for missing data state in the rate matrix
@@ -74,6 +75,8 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private boolean is_uniform;
     // Whether to print edit rate details out during initialiation
     private boolean printRates_;
+    // Whether edit rates were input
+    private boolean hasInputEditRates;
 
     public CrisprSubstitutionModel() {
         // This model sets root frequencies internally (unedited state fixed to 1.0
@@ -95,6 +98,7 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
         is_global = MODEL_GLOBAL.equals(modelStructureInput.get());
         is_uniform = EDIT_RATE_MODE_UNIFORM.equals(editRateCalculationModeInput.get());
         printRates_ = printRates.get();
+        hasInputEditRates = editRatesInput.get() != null;
 
         // Read in mutation data and remap mutations to be sequential
         data = dataInput.get();
@@ -138,14 +142,17 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     private void initializeEditRates() {
         maxStates = new int[nrOfSites];
         editRates = new Double[nrOfSites][];
-        if (!editRatesInput.get().isEmpty()) {
-            throw new RuntimeException("TODO: Not sure that the provided edit rates is setup currently in terms of mcmc store/restore. Will work in this soon.");
-            // if (!is_global) {
-            //     throw new RuntimeException("Sitewise model structure is not compatible with provided " +
-            //             "edit rates in the current implementation. Please use the global model structure.");
-            // }
-            // getProvidedEditRates();
-            // return;
+        if (hasInputEditRates) {
+            if (!is_global) {
+                throw new RuntimeException("Sitewise model structure is not compatible with input " +
+                        "edit rates in the current implementation. Please use the global model structure.");
+            }
+            getProvidedEditRates();
+            getMaxObservedStatesGlobal();
+            if (editRates[0].length != maxStates[0]) {
+                throw new RuntimeException("Number of input edit rates (" + editRates[0].length + ") does not match the number of edits observed in the data (" + maxStates[0] + ").");
+            }
+            return;
         } else {
             calculateDynamicEditRates();
         }
@@ -154,15 +161,14 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     private void getProvidedEditRates() {
         if (printRates_) System.out.println("Using provided edit rates.");
-        RealParameter editRate_ = editRatesInput.get().get(0);
-        editRates[0] = new Double[editRate_.getDimension()];
-        for (int i = 0; i < editRate_.getDimension(); i++) {
-            editRates[0][i] = editRate_.getValue(i);
-        }
+        editRates[0] = editRatesInput.get().getValues();
         // Reuse the same array reference for all sites since we are using the global model
         for (int i = 1; i < nrOfSites; i++) {
             editRates[i] = editRates[0];
         }
+        // May need to store input edit rates since they may be free parameters during inference
+        storedEditRates = new Double[editRates[0].length];
+        System.arraycopy(editRates[0], 0, storedEditRates, 0, editRates[0].length);
     }
 
     private void calculateDynamicEditRates() {
@@ -420,8 +426,15 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
 
     @Override
     public void store() {
-        storedSilencingRate = silencingRateInput.get().getValue();
         super.store();
+        storedSilencingRate = silencingRateInput.get().getValue();
+        if (hasInputEditRates) System.arraycopy(editRates[0], 0, storedEditRates, 0, editRates[0].length);
+    }
+
+    @Override
+    public void restore() {
+        super.restore();
+        if (hasInputEditRates) System.arraycopy(storedEditRates, 0, editRates[0], 0, storedEditRates.length);  // Restore reference to the input edit rates array since it may have been changed during inference
     }
 
     @Override
@@ -463,6 +476,10 @@ public class CrisprSubstitutionModel extends SubstitutionModel.Base {
     }
 
     public double getEditRate(int site, int editIndex) {
+        if (hasInputEditRates) {
+            // Update edit rates from input in case they have changed since initialization, but only for the first site since other sites reference the same array in global mode
+            editRates[0] = editRatesInput.get().getValues();
+        }
         return editRates[site][editIndex - 1];  // Edit index is 1-based for input but 0-base in the array
     }
 
