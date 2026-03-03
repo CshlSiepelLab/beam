@@ -1,5 +1,10 @@
 package beam.substitutionmodel;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.lang.reflect.InvocationTargetException;
 
 import beast.base.core.Description;
@@ -9,40 +14,48 @@ import beast.base.evolution.substitutionmodel.GeneralSubstitutionModel;
 import beast.base.inference.parameter.RealParameter;
 
 /**
- * General tissue substitution model, implementing a GTR (default) or GTI tissue 
- * substitution model and tissue-specific frequencies parameterized by a primary 
- * tissue frequency (pi) and uniform distribution for remaining tissues.
+ * Structured tissue substitution model implementing a user defined paramaterization of
+ * the rate matrix (0 = fixed rate of 0; 1,2,...,N other values index the input rates as 
+ * free parameters). Tissue-specific frequencies parameterized by a primary tissue frequency 
+ * (pi) and uniform distribution for remaining tissues.
+ * 
+ * WARNING: Please make sure the order of states in input model structure file matches the order
+ * of states in the input data, which can be input by the user directly to the TissueData alignment 
+ * rather than relying on internal order determination which may not match expectations.
  *
  * @author Stephen Staklinski
  */
-@Description("General tissue substitution model implementation.")
-public class TissueSubstitutionModel extends GeneralSubstitutionModel {
+@Description("Structured tissue substitution model implementation.")
+public class StructuredTissueSubstitutionModel extends GeneralSubstitutionModel {
 
     // Input for the model structure
-    public Input<String> modelInput = new Input<>("model",
-            "String specifying the model structure (e.g., 'GTR' or 'GTI'). Default is GTR",
-            "GTR", Validate.OPTIONAL);
+    public Input<String> modelStructureFileInput = new Input<>("modelStructureFile",
+            "Filepath for the model structure CSV file", Validate.REQUIRED);
 
     /** Input for the stationary frequency of the first state */
     public Input<RealParameter> piInput = new Input<>("pi",
             "Stationary frequency of the first state",
             Validate.REQUIRED);
 
+    // Store model structure
+    private int[][] rateIndices;
+
     @Override
     public void initAndValidate() {
-
-        if (!modelInput.get().equals("GTR") && !modelInput.get().equals("GTI")) {
-            throw new IllegalArgumentException("Invalid model type: " + modelInput.get() + 
-                ". Supported models are 'GTR' and 'GTI'.");
-        }
-        
         updateMatrix = true;
         frequencies = frequenciesInput.get();
         nrOfStates = frequencies.getFreqs().length;
         if (nrOfStates < 2) throw new IllegalArgumentException("Number of tissues must be at least 2.");
         rateMatrix = new double[nrOfStates][nrOfStates];
         relativeRates = new double[ratesInput.get().getDimension()];
-        validateInputRates();
+
+        // Read model structure file
+        rateIndices = readStructureFile(modelStructureFileInput.get());
+        // Validate model structure dimensions match nrOfStates
+        if (rateIndices.length != nrOfStates) throw new IllegalArgumentException("Model structure file must have " + nrOfStates + " rows.");
+        for (int i = 0; i < nrOfStates; i++) {
+            if (rateIndices[i].length != nrOfStates) throw new IllegalArgumentException("Model structure file must be square with dimension " + nrOfStates + ".");
+        }
         
         // Initialize the eigen system
         try {
@@ -53,38 +66,36 @@ public class TissueSubstitutionModel extends GeneralSubstitutionModel {
         }
     }
 
-    /**
-     * Validates that the number of input rates is correct for the GTR of GTI models.
-     * The number of rates should be equal to ((nrOfStates * nrOfStates) - nrOfStates) / 2
-     * for all off-diagonal rates on one side of the matrix for GTR or 
-     * (nrOfStates * nrOfStates) - nrOfStates) for GTI.
-     *
-     * @throws IllegalArgumentException if the number of input rates is incorrect
-     */
-    private void validateInputRates() {
-        // Calculate the expected number of rates based on the model type
-        int expectedRates;
-        if (modelInput.get().equals("GTR")) {
-            // GTR has one rate for each off-diagonal tissue transition, but only on one side of the matrix
-            expectedRates = ((nrOfStates * nrOfStates) - nrOfStates) / 2;
-        } else {
-            // GTI has one rate for each off-diagonal tissue transition
-            expectedRates = nrOfStates * nrOfStates - nrOfStates;
+
+    private int[][] readStructureFile(String filepath) {
+        List<int[]> rows = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(filepath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] tokens = line.split(",");
+                int[] row = new int[tokens.length];
+                for (int i = 0; i < tokens.length; i++) {
+                    row[i] = Integer.parseInt(tokens[i].trim());
+                }
+                rows.add(row);
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Error reading model structure file: " + filepath, e);
         }
 
-        // Validate the number of input rates against the expected number
-        if (ratesInput.get().getDimension() != expectedRates) {
-            throw new IllegalArgumentException(
-                String.format("The number of input rates must be %d for all off-diagonal rates " +
-                            "on one side of the matrix, but it is %d. " +
-                            "Check the dimension of the input rate parameters.",
-                    expectedRates, ratesInput.get().getDimension()));
+        int[][] matrix = new int[rows.size()][];
+        for (int i = 0; i < rows.size(); i++) {
+            matrix[i] = rows.get(i);
         }
+
+        return matrix;
     }
 
 
     /**
-     * Sets up the rate matrix for the GTR or GTI model.
+     * Sets up the rate matrix based on the input structure.
      * The matrix is normalized to expect one substitution per unit time with respect
      * to the stationary frequencies. The frequencies are parameterized by pi specifying
      * the primary tissue frequency and 1-pi for the remaining tissues in a uniform distribution.
@@ -103,32 +114,14 @@ public class TissueSubstitutionModel extends GeneralSubstitutionModel {
         
         // Initialize rate matrix off-diagonal rates and calculate row sums in one pass
         double[] rowSums = new double[nrOfStates];
-        int count = 0;
-        if (modelInput.get().equals("GTR")) {
-            for (int i = 0; i < nrOfStates; i++) {
-                rateMatrix[i][i] = 0.0; // Set diagonal to zero
-                for (int j = i + 1; j < nrOfStates; j++) {
-                    double rate = relativeRates[count];
-                    double rateI = rate * piFreqs[i];
+        for (int i = 0; i < nrOfStates; i++) {
+            rateMatrix[i][i] = 0.0; // Set diagonal to zero
+            for (int j = 0; j < nrOfStates; j++) {
+                if (i != j) {
+                    double rate = (rateIndices[i][j] == 0) ? 0.0 : relativeRates[rateIndices[i][j] - 1];
                     double rateJ = rate * piFreqs[j];
                     rateMatrix[i][j] = rateJ;
-                    rateMatrix[j][i] = rateI;
                     rowSums[i] += rateJ;
-                    rowSums[j] += rateI;
-                    count++;
-                }
-            }
-        } else if (modelInput.get().equals("GTI")) {
-            for (int i = 0; i < nrOfStates; i++) {
-                rateMatrix[i][i] = 0.0; // Set diagonal to zero
-                for (int j = 0; j < nrOfStates; j++) {
-                    if (i != j) {
-                        double rate = relativeRates[count];
-                        double rateJ = rate * piFreqs[j];
-                        rateMatrix[i][j] = rateJ;
-                        rowSums[i] += rateJ;
-                        count++;
-                    }
                 }
             }
         }

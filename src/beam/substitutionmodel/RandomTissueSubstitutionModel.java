@@ -1,9 +1,5 @@
 package beam.substitutionmodel;
 
-
-import java.lang.reflect.InvocationTargetException;
-import java.util.Arrays;
-
 import beast.base.core.Description;
 import beast.base.core.Input;
 import beast.base.core.Input.Validate;
@@ -11,48 +7,37 @@ import beast.base.evolution.tree.Node;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.evolution.datatype.DataType;
 import beast.base.evolution.substitutionmodel.EigenDecomposition;
-import beast.base.evolution.substitutionmodel.GeneralSubstitutionModel;
+import beast.base.evolution.substitutionmodel.SubstitutionModel;
 
 /**
- * @author Stephen Staklinski
- **/
+* This class always returns transition probabilities equal to the stationary
+* distribution of the states. This is useful for testing an ancestral state
+* random sampling control model for model selection purposes between
+* informative vs. uninformative data.
+* 
+* @author Stephen Staklinski
+**/
 
 @Description("Random substitution model implementation that simply returns equillibrium distribution transition probabilities.")
 
-public class RandomTissueSubstitutionModel extends GeneralSubstitutionModel {
+public class RandomTissueSubstitutionModel extends SubstitutionModel.Base {
 
     public Input<RealParameter> piInput = new Input<>("pi", "Stationary frequency of the first state", Validate.REQUIRED);
 
-    // Store pi
-    private double storedPi;
-
-    /*
-     * This class always returns transition probabilities equal to the stationary
-     * distribution of the states. This is useful for testing an ancestral state
-     * random sampling control model for model selection purposes between
-     * informative vs. uninformative data.
-     */
-
      @Override
      public void initAndValidate(){
-         updateMatrix = true;
-         frequencies = frequenciesInput.get();
-         nrOfStates = frequencies.getFreqs().length;
-         rateMatrix = new double[nrOfStates][nrOfStates];
- 
-         // Verify the number of input rates is correct
-         int nrInputRates = ratesInput.get().getDimension();
-         relativeRates = new double[ratesInput.get().getDimension()];
-
-         storedPi = piInput.get().getValue();
+        super.initAndValidate();
+        nrOfStates = frequencies.getFreqs().length;
+        if (nrOfStates < 2) throw new IllegalArgumentException("Number of tissues must be at least 2.");
      }
 
 
     @Override
     public void getTransitionProbabilities(Node node, double startTime, double endTime, double rate, double[] matrix) {
-        // always returns stationary distribution probabilities for random sampling
+        // Always returns stationary distribution probabilities for random sampling
         // pi is the primary tissue frequency and the rest are uniform over the remaining tissues given 1-pi
         double pi = piInput.get().getValue();
+        if (pi < 0.0 || pi > 1.0) throw new IllegalArgumentException("pi must be in [0,1], but it is " + pi);
         double[] piFreqs = new double[nrOfStates];
         piFreqs[0] = pi;
         double piUniformOthers = (1 - pi) / (nrOfStates - 1);
@@ -67,20 +52,12 @@ public class RandomTissueSubstitutionModel extends GeneralSubstitutionModel {
         }
     }
 
-
-    /** sets up rate matrix**/
     @Override
-    public void setupRateMatrix() {
-        /*
-         * This does nothing because the rate matrix is not
-         * used in the likelihood calculations.
-         */
-    }
-
-    @Override
-    public boolean requiresRecalculation() {
-        if (piInput.get().getValue() != storedPi) return true;
-        return super.requiresRecalculation();
+    protected boolean requiresRecalculation() {
+        if (piInput.get() != null && piInput.get().somethingIsDirty()) {
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -89,9 +66,11 @@ public class RandomTissueSubstitutionModel extends GeneralSubstitutionModel {
     }
 
     @Override
-    public void store() {
-        storedPi = piInput.get().getValue();
-        super.store();
+    public EigenDecomposition getEigenDecomposition(Node node) {return null;}
+
+    @Override
+    public boolean canHandleDataType(DataType dataType) {
+        return dataType.getStateCount() != Integer.MAX_VALUE;
     }
 }
 

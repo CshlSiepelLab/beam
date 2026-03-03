@@ -1,4 +1,4 @@
-<package name="beam" version="0.4.2">
+<package name="beam" version="0.5.0">
   <depends on="BEAST.base" atleast="2.7.7"/>
   <depends on="BEAST.app" atleast="2.7.7"/>
   <depends on="BEAST_CLASSIC" atleast="1.6.0"/>
@@ -15,10 +15,7 @@
     <provider classname="beam.substitutionmodel.CrisprSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.TissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.RandomTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.PrimaryOnlyTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.PrimaryMetOnlyTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.PrimaryMetReseedingAllTissueSubstitutionModel"/>
-    <provider classname="beam.substitutionmodel.NoDirectSeedingSpecifiedTissueGTRTissueSubstitutionModel"/>
+    <provider classname="beam.substitutionmodel.StructuredTissueSubstitutionModel"/>
     <provider classname="beam.substitutionmodel.TissueSubstitutionModelLogger"/>
 
     <!-- Datatype providers -->
