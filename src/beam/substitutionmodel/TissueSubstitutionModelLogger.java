@@ -13,19 +13,21 @@ import java.io.PrintStream;
 import java.util.Arrays;
 
 /**
+ * Logs the normalized rates from the rate matrix of a BEAM tissue substitution model.
+ * 
  * @author Stephen Staklinski
  **/
 
 @Description("Logger for BEAM tissue subsitution models.")
 public class TissueSubstitutionModelLogger extends BEASTObject implements Loggable{
 
-    public Input<GeneralSubstitutionModel> modelInput = new Input<>("model", "Beam general substitution model.", Input.Validate.REQUIRED);
+    public Input<GeneralSubstitutionModel> modelInput = new Input<>("model", "Beam general tissue substitution model.", Input.Validate.REQUIRED);
     public Input<TissueData> dataTypeInput = new Input<>("dataType", "User data type for the location data to generate more readable logs.", Input.Validate.REQUIRED);
 
     private int nrOfStates;
     protected GeneralSubstitutionModel model;
 
-    public TissueSubstitutionModelLogger() { }
+    public TissueSubstitutionModelLogger() {}
 
     @Override
     public void initAndValidate() {
@@ -35,8 +37,8 @@ public class TissueSubstitutionModelLogger extends BEASTObject implements Loggab
 
     @Override
     public void init(PrintStream out) {
-        String mainID = (getID() == null || getID().matches("\\s*")) ? "geoSubstModel" : getID();
-        String relRatePrefix = mainID + ".relGeoRate_";
+        String mainID = (getID() == null || getID().matches("\\s*")) ? "tissueSubstModelLogger" : getID();
+        String relRatePrefix = mainID + ".relMigRate_";
         TissueData dataType = dataTypeInput.get();
 
         for (int i=0; i<nrOfStates; i++) {
@@ -51,18 +53,18 @@ public class TissueSubstitutionModelLogger extends BEASTObject implements Loggab
 
     @Override
     public void log(long nSample, PrintStream out) {
-        // Logging normalized rates directly from the rate matrix, not the input rate parameters used to setup the rate matrix.
+        model.setupRelativeRates();
         model.setupRateMatrix();
         double[][] rateMatrix = model.getRateMatrix();
 
         for (int i=0; i<nrOfStates; i++) {
             for (int j=0; j<nrOfStates; j++) {
-                if (j==i) { continue; }
+                if (j==i) { continue; } // Skip logging the diagonal values
                 out.print(rateMatrix[i][j] + "\t");
             }
         }
     }
 
     @Override
-    public void close(PrintStream out) { }
+    public void close(PrintStream out) {}
 }
