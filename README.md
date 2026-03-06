@@ -10,17 +10,13 @@ BEAM is a BEAST2 package for Bayesian cancer migration graph inference from CRIS
 ## Installation
 
 1. Install BEAST2 from [beast2.org](https://www.beast2.org/)
-3. Install required BEAST2 packages based on xml declaration. The example uses the following:
-   ```bash
-   packagemanager -add BEAST_CLASSIC
-   ```
-4. Install BEAM:
-   - Download the latest release from [BEAM GitHub releases](https://github.com/StephenStaklinski/beam/releases)
+2. Install BEAM:
+   - Download the latest release from [BEAM GitHub releases](https://github.com/CshlSiepelLab/beam/releases)
    - Find your BEAST2 packages directory (check with `packagemanager -list`)
    - Create and set up BEAM in that directory (replacing vX.Y.Z with the latest version)
    ```bash
      mkdir beam && cd beam
-     wget https://github.com/StephenStaklinski/beam/releases/download/vX.Y.Z/beam.vX.Y.Z.zip
+     wget https://github.com/CshlSiepelLab/beam/releases/download/vX.Y.Z/beam.vX.Y.Z.zip
      unzip beam.vX.Y.Z.zip
    ```
 
