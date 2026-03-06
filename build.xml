@@ -10,7 +10,6 @@
     <!-- Location to check for local copy of beast2 repository -->
     <property name="local-beast-source-root" location="./beast"/>
     <property name="local-beastfx-source-root" location="./beastfx"/>
-    <property name="local-beast-classic-root" location="./beast-classic"/>
 
     <!-- BEAST 2 currently uses Java 1.8 -->
     <property name="releaseVersion" value="17"/>
@@ -26,17 +25,13 @@
     <property name="beast-version" value="master"/>
     <property name="beastfx-branch" value="master"/>
     <property name="beastfx-version" value="master"/>
-    <property name="beast-classic-branch" value="master"/>
-    <property name="beast-classic-version" value="master"/>
 
     <!-- Names of temporary build/test directories -->
     <property name="build" location="build"/>
     <property name="build-beast" location="build-beast"/>
     <property name="build-beastfx" location="build-beastfx"/>
-    <property name="build-beastclassic" location="build-beastclassic"/>
     <property name="beast-source-root" location="beast-source"/>
     <property name="beastfx-source-root" location="beastfx-source"/>
-    <property name="beast-classic-source-root" location="beast-classic-source"/>
     <property name="build-test" location="build-test"/>
     <property name="test-reports" location="test-reports"/>
     <property name="dist" location="dist"/>
@@ -158,45 +153,8 @@
         </javac>
     </target>
 
-    <!-- Check for BEAST_CLASSIC -->
-    <target name="find-beast-classic" depends="init">
-        <available file="${local-beast-classic-root}" property="beastClassicAvailable"/>
-    </target>
-
-    <target name="get-local-beast-classic" depends="find-beast-classic" if="beastClassicAvailable">
-        <echo>Compiling against BEAST_CLASSIC source found at ${local-beast-classic-root}.</echo>
-        <copy todir="${beast-classic-source-root}">
-          <fileset dir="${local-beast-classic-root}" includes="**/*.*"/>
-        </copy>
-    </target>
-
-    <target name="get-remote-beast-classic" depends="find-beast-classic" unless="beastClassicAvailable">
-        <echo>No local copy of BEAST_CLASSIC found at ${local-beast-classic-root}.</echo>
-        <echo>Downloading version ${beast-classic-version} from GitHub.</echo>
-
-        <mkdir dir="beast-classic-archive"/>
-        <mkdir dir="${beast-classic-source-root}"/>
-
-        <get src="https://github.com/BEAST2-Dev/beast-classic/releases/download/v1.6.0/BEAST_CLASSIC.package.v1.6.4.zip"
-             dest="beast-classic-archive/beast-classic.zip"/>
-        <unzip src="beast-classic-archive/beast-classic.zip" dest="beast-classic-archive"/>
-
-        <copy todir="${beast-classic-source-root}">
-            <fileset dir="beast-classic-archive" includes="**/*.jar"/>
-        </copy>
-
-        <delete dir="beast-classic-archive"/>
-    </target>
-
-    <target name="build-beast-classic" depends="get-local-beast-classic,get-remote-beast-classic">
-        <mkdir dir="${build-beastclassic}"/>
-        <copy todir="${build-beastclassic}">
-            <fileset dir="${beast-classic-source-root}" includes="**/*.jar"/>
-        </copy>
-    </target>
-
     <!-- Compile -->
-    <target name="compile" depends="build-beast,build-beastfx,build-beast-classic">
+    <target name="compile" depends="build-beast,build-beastfx">
       <javac srcdir="${src}" destdir="${build}"
              release="${releaseVersion}"
              includeantruntime="false"
@@ -209,7 +167,6 @@
                 <fileset dir="${beastfx-source-root}/locallib" includes="**/*.jar"/>
                 <pathelement path="${build-beastfx}"/>
                 <fileset dir="${env.JAVA_FX_HOME}" includes="**/*.jar"/>
-                <fileset dir="${build-beastclassic}" includes="**/*.jar"/>
             </classpath>
         </javac>
     </target>
@@ -377,10 +334,8 @@
         <delete dir="${build}" />
         <delete dir="${build-beast}" />
         <delete dir="${build-beastfx}" />
-        <delete dir="${build-beastclassic}" />
         <delete dir="${beast-source-root}" />
         <delete dir="${beastfx-source-root}" />
-        <delete dir="${beast-classic-source-root}" />
         <!-- <delete dir="${dist}" /> -->
         <delete dir="${build-test}" />
         <delete dir="${test-reports}" />

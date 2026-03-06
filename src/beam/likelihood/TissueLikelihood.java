@@ -14,11 +14,8 @@ import beast.base.evolution.sitemodel.SiteModel;
 import beast.base.evolution.branchratemodel.BranchRateModel;
 import beast.base.evolution.likelihood.GenericTreeLikelihood;
 import beast.base.evolution.datatype.DataType;
-import beastclassic.evolution.tree.TreeTrait;
-import beastclassic.evolution.tree.TreeTraitProvider;
 import beast.base.evolution.tree.TreeInterface;
 import beast.base.util.Randomizer;
-
 
 /**
  * Calculate the tissue likelihood including the origin node.
@@ -26,12 +23,10 @@ import beast.base.util.Randomizer;
  * @author Stephen Staklinski
  */
 @Description("Calculate the tissue likelihood including the origin node.")
-public class TissueLikelihood extends GenericTreeLikelihood implements TreeTraitProvider {
+public class TissueLikelihood extends GenericTreeLikelihood {
 
     // Input for the origin parameter
     public Input<RealParameter> originInput = new Input<>("origin", "Start of the cell division process, usually start of the experiment.", Validate.REQUIRED);
-    // Input for the label used for tissues written to posterior samples
-    public Input<String> tagInput = new Input<>("tag", "label used to report trait in the output tree posterior samples. Default is location.", "location", Validate.OPTIONAL);
 
     // Substitution model
     protected SubstitutionModel.Base substitutionModel;
@@ -76,23 +71,19 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
     // Threshold for scaling partials
     private static final double SCALING_THRESHOLD = 1.0E-100;
     // Origin height
-    protected Double originHeight;
+    public Double originHeight;
     // Data type for the alignment
     protected DataType dataType;
     // Reconstructed states for each node
     private int[] reconstructedStates;
     // Stored reconstructed states for store/restore operations
     private int[] storedReconstructedStates;
-    // Tag label for trait reporting
-    private String tag;
     // Flag indicating if states have been redrawn
     private boolean areStatesRedrawn = false;
     // Stored flag for states redrawn status
     private boolean storedAreStatesRedrawn = false;
     // States at tip nodes
     private int[] tipStates;
-    // Helper for tree traits
-    protected TreeTraitProvider.Helper treeTraits = new Helper();
     // Origin node index (not physically in the tree, but we need to store partials for it)
     int originIndex;
 
@@ -139,8 +130,7 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         // Set initial states
         setStates(treeInput.get().getRoot());
 
-        // Initialize tissue input states and output tag
-        tag = tagInput.get();
+        // Initialize tissue input states
         tipStates = new int[treeInput.get().getLeafNodeCount()];
         dataType = data.getDataType();
         for (Node node : treeInput.get().getExternalNodes()) {
@@ -151,18 +141,6 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         // Initialize reconstructed tissue states arrays
         reconstructedStates = new int[numNodesNoOrigin];
         storedReconstructedStates = new int[numNodesNoOrigin];
-        
-        // Initialize the input observed tissue state for each tip in the tree
-        treeTraits.addTrait("states", new TreeTrait.IA() {
-            @Override
-            public String getTraitName() { return tag; }
-            @Override
-            public Intent getIntent() { return Intent.NODE; }
-            @Override
-            public int[] getTrait(TreeInterface tree, Node node) { return new int[] { getStateForNode(tree, node) }; }
-            @Override
-            public String getTraitString(TreeInterface tree, Node node) { return "\"" + dataType.getCode(getStateForNode(tree, node)) + "\""; }
-        });
     }
 
     // Sets the observed data in likelihood core partials for leaf nodes across all alignment sites
@@ -409,6 +387,11 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
         return reconstructedStates[node.getNr()];
     }
 
+    // Gets the state string code for a given node in the tree.
+    public String getStateStringForNode(TreeInterface tree, Node node) {
+        return dataType.getCode(getStateForNode(tree, node));
+    }
+
     // Traverses the tree in pre-order to sample internal node states
     public void sampleAncestralStates(Node node, int parentState) {
         int nodeNum = node.getNr();
@@ -449,16 +432,5 @@ public class TissueLikelihood extends GenericTreeLikelihood implements TreeTrait
             // Handle leaf node where tissue is known
             reconstructedStates[nodeNum] = tipStates[nodeNum];
         }
-    }
-
-    @Override
-    public TreeTrait[] getTreeTraits() {
-        return treeTraits.getTreeTraits();
-    }
-
-
-    @Override
-    public TreeTrait getTreeTrait(String key) {
-        return treeTraits.getTreeTrait(key);
     }
 }
