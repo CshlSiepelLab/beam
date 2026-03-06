@@ -6,6 +6,7 @@
   <service type="beast.base.core.BEASTInterface">
     <!-- Tree-related providers -->
     <provider classname="beam.tree.StartingTreeFromNewick"/>
+    <provider classname="beam.tree.TreeWithTissuesAndOriginLogger"/>
 
     <!-- Likelihood-related providers -->
     <provider classname="beam.likelihood.IrreversibleCrisprLikelihood"/>
